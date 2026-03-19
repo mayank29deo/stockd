@@ -1,0 +1,57 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; -webkit-tap-highlight-color: transparent; }
+  body {
+    margin: 0;
+    background-color: #0A0A0F;
+    color: #F0F0F5;
+    font-family: 'Inter', system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    overflow-x: hidden;
+  }
+  #root { width: 100%; min-height: 100svh; }
+  ::-webkit-scrollbar { width: 4px; height: 4px; }
+  ::-webkit-scrollbar-track { background: #0D0D12; }
+  ::-webkit-scrollbar-thumb { background: #2A2A3E; border-radius: 2px; }
+  ::-webkit-scrollbar-thumb:hover { background: #3D3D5C; }
+  ::selection { background: rgba(255,107,53,0.3); color: #F0F0F5; }
+}
+
+@layer components {
+  .glass-card {
+    @apply bg-card/80 backdrop-blur-md border border-subtle rounded-xl shadow-card;
+  }
+  .glass-card-hover {
+    @apply glass-card hover:border-muted hover:shadow-card-hover transition-all duration-300;
+  }
+  .btn-primary {
+    @apply bg-gradient-saffron text-white font-semibold px-5 py-2.5 rounded-lg
+           hover:opacity-90 active:scale-95 transition-all duration-150 shadow-glow-saffron;
+  }
+  .btn-ghost {
+    @apply border border-subtle text-secondary hover:border-muted hover:text-primary
+           font-medium px-5 py-2.5 rounded-lg transition-all duration-150;
+  }
+  .verdict-buy  { @apply bg-bull/10 text-bull border border-bull/20 font-bold; }
+  .verdict-sell { @apply bg-bear/10 text-bear border border-bear/20 font-bold; }
+  .verdict-hold { @apply bg-caution/10 text-caution border border-caution/20 font-bold; }
+  .positive { @apply text-bull; }
+  .negative { @apply text-bear; }
+  .input-base {
+    @apply bg-elevated border border-subtle rounded-lg px-4 py-2.5 text-primary
+           placeholder:text-faded focus:outline-none focus:border-saffron-500
+           transition-colors duration-150 w-full;
+  }
+  .label   { @apply text-xs font-medium text-secondary uppercase tracking-wider; }
+  .gradient-text { @apply bg-gradient-saffron bg-clip-text text-transparent; }
+}
+
+@layer utilities {
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+}
