@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { Plus, Star, X, RefreshCw } from 'lucide-react'
+import { STOCKS } from '../data/mock/stocks'
+import { NSE_STOCKS } from '../data/nseStocks'
 import { useWatchlistStore, useUIStore } from '../store/index'
 import { stocksApi } from '../api/stocks'
 import { VerdictBadge } from '../components/ui/Badge'
@@ -30,10 +32,21 @@ export const Watchlist = () => {
       .finally(() => setLoadingLive(false))
   }, [symbols.join(',')]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Merge live data with symbol list so all symbols appear even if API partial
+  // Merge: live API quote + mock (for priceHistory/color) + NSE_STOCKS (for name/sector)
   const watchedStocks = symbols.map(sym => {
-    const live = liveStocks.find(q => q.symbol === sym)
-    return live ? { ...live, id: sym } : { id: sym, symbol: sym, price: null, changePercent: null }
+    const mock    = STOCKS.find(s => s.id === sym || s.symbol === sym)
+    const nse     = NSE_STOCKS.find(s => s.symbol === sym)
+    const live    = liveStocks.find(q => q.symbol === sym)
+    return {
+      id:           sym,
+      symbol:       sym,
+      name:         live?.name || mock?.name || nse?.name || sym,
+      color:        mock?.color || '#FF6B35',
+      priceHistory: mock?.priceHistory || [],
+      verdict:      live?.verdict || mock?.verdict || null,
+      price:        live?.price ?? mock?.price ?? null,
+      changePercent:live?.changePercent ?? mock?.changePercent ?? null,
+    }
   })
 
   const handleCreate = () => {
