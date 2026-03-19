@@ -8,7 +8,7 @@ import { StockCard } from '../components/stocks/StockCard'
 import { IndexCardSkeleton, StockCardSkeleton } from '../components/ui/Skeleton'
 import { formatINR, formatPercent, getFearGreedLabel } from '../utils/formatters'
 import { useStocks, useIndices, useMarketSentiment } from '../hooks/useStocks'
-import { MARKET_MOOD } from '../data/mock/stocks'
+import { MARKET_MOOD, INDICES as MOCK_INDICES } from '../data/mock/stocks'
 import { clsx } from 'clsx'
 
 const LiveBadge = ({ isLive }) => (
@@ -120,8 +120,16 @@ const TopPicksBanner = ({ stocks, type }) => {
 
 export const Dashboard = () => {
   const { data: stocks, loading: stocksLoading, isLive: stocksLive }     = useStocks()
-  const { data: indices, loading: indicesLoading, isLive: indicesLive }  = useIndices()
+  const { data: indicesRaw, loading: indicesLoading, isLive: indicesLive } = useIndices()
   const { data: mood, isLive: moodLive }                                  = useMarketSentiment()
+
+  // Fall back to mock priceHistory when API returns empty (market closed / cached failure)
+  const indices = (indicesRaw || []).map(idx => ({
+    ...idx,
+    priceHistory: idx.priceHistory?.length
+      ? idx.priceHistory
+      : (MOCK_INDICES.find(m => m.id === idx.id)?.priceHistory || []),
+  }))
 
   const topBuys = (stocks || [])
     .filter(s => s.verdict?.action === 'BUY')
