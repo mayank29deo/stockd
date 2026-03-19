@@ -1,22 +1,40 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { Plus, Trash2, Star, X } from 'lucide-react'
-import { STOCKS } from '../data/mock/stocks'
+import { Plus, Star, X, RefreshCw } from 'lucide-react'
 import { useWatchlistStore, useUIStore } from '../store/index'
+import { stocksApi } from '../api/stocks'
 import { VerdictBadge } from '../components/ui/Badge'
 import { MiniSparkline } from '../components/charts/MiniSparkline'
 import { formatINR, getChangeColor } from '../utils/formatters'
 import { clsx } from 'clsx'
 
 export const Watchlist = () => {
-  const { watchlists, activeWatchlistId, setActiveWatchlist, createWatchlist, deleteWatchlist, removeFromWatchlist, getActiveWatchlist } = useWatchlistStore()
+  const { watchlists, activeWatchlistId, setActiveWatchlist, createWatchlist, removeFromWatchlist, getActiveWatchlist } = useWatchlistStore()
   const { addToast } = useUIStore()
   const [newListName, setNewListName] = useState('')
   const [creating, setCreating] = useState(false)
+  const [liveStocks, setLiveStocks] = useState([])
+  const [loadingLive, setLoadingLive] = useState(false)
 
   const active = getActiveWatchlist()
-  const watchedStocks = STOCKS.filter(s => active?.stockIds.includes(s.id))
+  const symbols = active?.stockIds ?? []
+
+  // Fetch live quotes for ALL watchlisted symbols (not limited to mock data)
+  useEffect(() => {
+    if (!symbols.length) { setLiveStocks([]); return }
+    setLoadingLive(true)
+    stocksApi.getBulkQuotes(symbols)
+      .then(data => { if (Array.isArray(data)) setLiveStocks(data.filter(q => q.price)) })
+      .catch(() => {})
+      .finally(() => setLoadingLive(false))
+  }, [symbols.join(',')]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Merge live data with symbol list so all symbols appear even if API partial
+  const watchedStocks = symbols.map(sym => {
+    const live = liveStocks.find(q => q.symbol === sym)
+    return live ? { ...live, id: sym } : { id: sym, symbol: sym, price: null, changePercent: null }
+  })
 
   const handleCreate = () => {
     if (!newListName.trim()) return
@@ -85,11 +103,15 @@ export const Watchlist = () => {
         <div className="bg-card border border-subtle rounded-xl overflow-hidden">
           <div className="p-4 border-b border-subtle flex items-center justify-between">
             <h2 className="text-sm font-semibold text-primary">{active?.name}</h2>
-            <span className="text-xs text-faded">{watchedStocks.length} stocks</span>
+            <div className="flex items-center gap-2">
+              {loadingLive && <RefreshCw size={11} className="text-faded animate-spin" />}
+              <span className="text-xs text-faded">{symbols.length} stocks</span>
+            </div>
           </div>
           <div className="divide-y divide-subtle">
             {watchedStocks.map((stock, i) => {
-              const isPos = stock.changePercent >= 0
+              const isPos = (stock.changePercent ?? 0) >= 0
+              const hasPrice = stock.price != null
               return (
                 <motion.div
                   key={stock.id}
@@ -101,29 +123,35 @@ export const Watchlist = () => {
                   {/* Logo */}
                   <Link to={`/stock/${stock.symbol}`} className="flex items-center gap-3 flex-1 min-w-0">
                     <div className="w-9 h-9 rounded-lg flex items-center justify-center text-xs font-bold text-white flex-shrink-0"
-                      style={{ backgroundColor: stock.color }}>
-                      {stock.logo}
+                      style={{ backgroundColor: stock.color || '#FF6B35' }}>
+                      {stock.symbol.slice(0, 2)}
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-1.5">
                         <span className="font-semibold text-sm text-primary">{stock.symbol}</span>
-                        <VerdictBadge verdict={stock.verdict?.action} size="xs" />
+                        {stock.verdict?.action && <VerdictBadge verdict={stock.verdict.action} size="xs" />}
                       </div>
-                      <p className="text-xs text-faded truncate">{stock.name}</p>
+                      <p className="text-xs text-faded truncate">{stock.name || stock.symbol}</p>
                     </div>
                   </Link>
 
                   {/* Sparkline */}
                   <div className="w-20 hidden sm:block flex-shrink-0">
-                    <MiniSparkline data={stock.priceHistory} positive={isPos} height={32} />
+                    <MiniSparkline data={stock.priceHistory || []} positive={isPos} height={32} />
                   </div>
 
                   {/* Price */}
                   <div className="text-right flex-shrink-0">
-                    <p className="text-sm font-mono font-semibold text-primary">{formatINR(stock.price)}</p>
-                    <p className={clsx('text-xs font-semibold', getChangeColor(stock.changePercent))}>
-                      {isPos ? '+' : ''}{stock.changePercent.toFixed(2)}%
-                    </p>
+                    {hasPrice ? (
+                      <>
+                        <p className="text-sm font-mono font-semibold text-primary">{formatINR(stock.price)}</p>
+                        <p className={clsx('text-xs font-semibold', getChangeColor(stock.changePercent))}>
+                          {isPos ? '+' : ''}{(stock.changePercent ?? 0).toFixed(2)}%
+                        </p>
+                      </>
+                    ) : (
+                      <p className="text-xs text-faded">{loadingLive ? 'Loading...' : 'N/A'}</p>
+                    )}
                   </div>
 
                   {/* Remove */}
