@@ -1,12 +1,13 @@
 import { useState, useEffect, useRef } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Search, Bell, TrendingUp, Menu, X, Loader2 } from 'lucide-react'
+import { Search, TrendingUp, Menu, X, Loader2 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { STOCKS, INDICES } from '../../data/mock/stocks'
 import { NSE_STOCKS } from '../../data/nseStocks'
 import { stocksApi } from '../../api/stocks'
 import { formatINR, getChangeColor } from '../../utils/formatters'
 import { UserMenu } from '../auth/UserMenu'
+import { NotificationBell } from '../notifications/NotificationPanel'
 import { clsx } from 'clsx'
 
 const MarketStatus = () => {
@@ -150,10 +151,7 @@ export const TopBar = ({ onMenuToggle, mobileMenuOpen }) => {
         {/* Right items */}
         <div className="flex items-center gap-2 flex-shrink-0">
           <MarketStatus />
-          <button className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-elevated text-secondary hover:text-primary transition-colors relative">
-            <Bell size={17} />
-            <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 bg-saffron-500 rounded-full" />
-          </button>
+          <NotificationBell />
           <UserMenu />
           <button
             className="lg:hidden w-8 h-8 flex items-center justify-center rounded-lg hover:bg-elevated text-secondary hover:text-primary transition-colors"
