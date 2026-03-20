@@ -123,13 +123,19 @@ export const Dashboard = () => {
   const { data: indicesRaw, loading: indicesLoading, isLive: indicesLive } = useIndices()
   const { data: mood, isLive: moodLive }                                  = useMarketSentiment()
 
-  // Fall back to mock priceHistory when API returns empty (market closed / cached failure)
-  const indices = (indicesRaw || []).map(idx => ({
-    ...idx,
-    priceHistory: idx.priceHistory?.length
-      ? idx.priceHistory
-      : (MOCK_INDICES.find(m => m.id === idx.id)?.priceHistory || []),
-  }))
+  // Merge live API data with mock fallbacks for any missing/zero fields
+  const indices = (indicesRaw || []).map(idx => {
+    const mock = MOCK_INDICES.find(m => m.id === idx.id) || {}
+    const hasLiveValue = idx.value && idx.value > 0
+    return {
+      ...mock,
+      ...idx,
+      value:         hasLiveValue ? idx.value         : mock.value,
+      change:        hasLiveValue ? idx.change        : mock.change,
+      changePercent: hasLiveValue ? idx.changePercent : mock.changePercent,
+      priceHistory:  idx.priceHistory?.length ? idx.priceHistory : (mock.priceHistory || []),
+    }
+  })
 
   const topBuys = (stocks || [])
     .filter(s => s.verdict?.action === 'BUY')
