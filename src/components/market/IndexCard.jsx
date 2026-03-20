@@ -27,10 +27,10 @@ export const IndexCard = ({ index, delay = 0 }) => {
       </div>
 
       <p className="text-lg font-bold font-mono text-primary mb-0.5 leading-tight">
-        {index.value.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+        {(index.value ?? 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
       </p>
       <p className={clsx('text-[10px] font-semibold mb-2', isPos ? 'text-bull' : 'text-bear')}>
-        {isPos ? '+' : ''}{index.change.toLocaleString('en-IN', { minimumFractionDigits: 2 })} pts
+        {isPos ? '+' : ''}{(index.change ?? 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })} pts
       </p>
 
       <MiniSparkline data={index.priceHistory} positive={isPos} height={36} />
