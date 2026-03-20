@@ -1,6 +1,6 @@
 const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
-const DEFAULT_TIMEOUT = 15000
+const DEFAULT_TIMEOUT = 60000
 
 async function request(path, options = {}) {
   const controller = new AbortController()

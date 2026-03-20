@@ -38,22 +38,15 @@ async def all_stocks(
     Cached aggressively to avoid rate-limiting Yahoo Finance.
     """
     from services.yahoo_service import get_history, get_fundamentals
-    results = []
+    from concurrent.futures import ThreadPoolExecutor, as_completed
 
-    # Batch download quotes
-    quotes = get_quotes_bulk(NIFTY50_SYMBOLS[:limit])
-
-    for q in quotes:
-        if "error" in q and "price" not in q:
-            continue
-
+    def _process_stock(q):
         sym = q["symbol"]
         history = get_history(sym, "3m")
         fund    = get_fundamentals(sym)
         tech    = compute_technicals(history)
         v       = build_verdict(sym, q["price"], fund, tech)
-
-        stock = {
+        return {
             **q,
             "name":      fund.get("description", sym)[:60] or sym,
             "sector":    SECTOR_MAP.get(sym, fund.get("sector", "Other")),
@@ -63,7 +56,7 @@ async def all_stocks(
             "weekHigh52":fund.get("weekHigh52", 0),
             "weekLow52": fund.get("weekLow52", 0),
             "avgVolume": fund.get("avgVolume", 0),
-            "priceHistory": history[-90:],  # last 90 days for sparklines
+            "priceHistory": history[-90:],
             "fundamentals": fund,
             "technicals":   tech,
             "sentiment": {"overall": 20, "news": 18, "social": 22, "analyst": 25, "geopolitical": 15, "fearGreedIndex": 55},
@@ -71,15 +64,26 @@ async def all_stocks(
             "verdict": v,
         }
 
-        # Apply filters
-        if verdict != "all" and v["action"] != verdict.upper():
-            continue
-        if sector != "all" and stock["sector"].lower() != sector.lower():
-            continue
-        if cap != "all" and stock["marketCap"] != cap.lower():
-            continue
+    # Batch download quotes
+    quotes = [q for q in get_quotes_bulk(NIFTY50_SYMBOLS[:limit])
+              if not ("error" in q and "price" not in q)]
 
-        results.append(stock)
+    results = []
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        future_map = {executor.submit(_process_stock, q): q for q in quotes}
+        for future in as_completed(future_map):
+            try:
+                stock = future.result()
+                v = stock["verdict"]
+                if verdict != "all" and v["action"] != verdict.upper():
+                    continue
+                if sector != "all" and stock["sector"].lower() != sector.lower():
+                    continue
+                if cap != "all" and stock["marketCap"] != cap.lower():
+                    continue
+                results.append(stock)
+            except Exception:
+                pass
 
     return results
 
