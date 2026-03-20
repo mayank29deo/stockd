@@ -1,5 +1,6 @@
 from fastapi import APIRouter, HTTPException, Query
 from services.yahoo_service import get_quote, get_quotes_bulk, get_market_status
+from services.nse_service import get_nifty50_quotes
 from services.technical_service import compute_technicals
 from services.verdict_service import build_verdict
 from config import NIFTY50_SYMBOLS, SECTOR_MAP
@@ -64,9 +65,13 @@ async def all_stocks(
             "verdict": v,
         }
 
-    # Batch download quotes
-    quotes = [q for q in get_quotes_bulk(NIFTY50_SYMBOLS[:limit])
-              if not ("error" in q and "price" not in q)]
+    # Try NSE India API first (fast, reliable), fall back to yfinance
+    nse_quotes = get_nifty50_quotes()
+    if nse_quotes:
+        quotes = [nse_quotes[s] for s in NIFTY50_SYMBOLS[:limit] if s in nse_quotes]
+    else:
+        quotes = [q for q in get_quotes_bulk(NIFTY50_SYMBOLS[:limit])
+                  if not ("error" in q and "price" not in q)]
 
     results = []
     with ThreadPoolExecutor(max_workers=10) as executor:

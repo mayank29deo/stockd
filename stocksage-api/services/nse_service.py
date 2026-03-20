@@ -52,6 +52,52 @@ def _get_session() -> requests.Session:
         return s
 
 
+def get_nifty50_quotes() -> dict:
+    """
+    Fetch all NIFTY 50 stock quotes in one NSE API call.
+    Returns dict keyed by symbol: {"RELIANCE": {price, change, ...}, ...}
+    """
+    try:
+        session = _get_session()
+        resp = session.get(
+            "https://www.nseindia.com/api/equity-stockIndices?index=NIFTY%2050",
+            timeout=10,
+        )
+        resp.raise_for_status()
+        items = resp.json().get("data", [])
+
+        result = {}
+        for item in items:
+            sym = item.get("symbol", "")
+            if not sym:
+                continue
+            price      = float(item.get("lastPrice", 0) or 0)
+            prev_close = float(item.get("previousClose", 0) or 0)
+            change     = float(item.get("change", 0) or 0)
+            change_pct = float(item.get("pChange", 0) or 0)
+            if price == 0:
+                continue
+            result[sym] = {
+                "symbol":        sym,
+                "price":         round(price, 2),
+                "previousClose": round(prev_close, 2),
+                "change":        round(change, 2),
+                "changePercent": round(change_pct, 2),
+                "open":          float(item.get("open", price) or price),
+                "high":          float(item.get("dayHigh", price) or price),
+                "low":           float(item.get("dayLow", price) or price),
+                "volume":        int(item.get("totalTradedVolume", 0) or 0),
+                "weekHigh52":    float(item.get("yearHigh", 0) or 0),
+                "weekLow52":     float(item.get("yearLow", 0) or 0),
+                "exchange":      "NSE",
+                "currency":      "INR",
+                "lastUpdated":   datetime.now(timezone.utc).isoformat(),
+            }
+        return result
+    except Exception:
+        return {}
+
+
 def get_nse_indices() -> dict:
     """
     Returns dict keyed by our index IDs with live values from NSE India.
