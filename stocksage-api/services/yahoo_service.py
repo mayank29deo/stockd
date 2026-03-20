@@ -272,6 +272,13 @@ def get_fundamentals(symbol: str) -> dict:
     return result
 
 
+_INDEX_NAMES = {
+    "NIFTY50": "NIFTY 50", "SENSEX": "SENSEX",
+    "BANKNIFTY": "BANK NIFTY", "NIFTYIT": "NIFTY IT",
+    "NIFTYMID": "NIFTY MIDCAP 50",
+}
+
+
 def get_index_quote(index_id: str, yf_ticker: str) -> dict:
     key = index_id
     with _lock:
@@ -279,29 +286,30 @@ def get_index_quote(index_id: str, yf_ticker: str) -> dict:
             return _quote_cache[key]
 
     try:
-        t = yf.Ticker(yf_ticker, session=_yf_session)
-        hist = t.history(period="2d", interval="1d")
-        info = t.fast_info
+        # Use yf.download (same method that works for stocks)
+        data = yf.download(
+            yf_ticker, period="5d", interval="1d",
+            auto_adjust=True, progress=False, threads=False,
+            session=_yf_session
+        )
+        if data.empty:
+            raise ValueError(f"No data for {yf_ticker}")
 
-        price      = _sf(hist["Close"].iloc[-1], 0)
-        prev_close = _sf(hist["Close"].iloc[-2] if len(hist) >= 2 else price, price)
+        price      = _sf(data["Close"].iloc[-1], 0)
+        prev_close = _sf(data["Close"].iloc[-2] if len(data) >= 2 else price, price)
         change     = round(price - prev_close, 2)
         change_pct = round((change / prev_close * 100) if prev_close else 0, 2)
 
         result = {
             "id": index_id,
-            "name": {
-                "NIFTY50": "NIFTY 50", "SENSEX": "SENSEX",
-                "BANKNIFTY": "BANK NIFTY", "NIFTYIT": "NIFTY IT",
-                "NIFTYMID": "NIFTY MIDCAP 50",
-            }.get(index_id, index_id),
+            "name": _INDEX_NAMES.get(index_id, index_id),
             "exchange": "BSE" if index_id == "SENSEX" else "NSE",
             "value": price,
             "change": change,
             "changePercent": change_pct,
-            "high": _sf(hist["High"].iloc[-1], price),
-            "low":  _sf(hist["Low"].iloc[-1],  price),
-            "open": _sf(hist["Open"].iloc[-1], price),
+            "high": _sf(data["High"].iloc[-1], price),
+            "low":  _sf(data["Low"].iloc[-1],  price),
+            "open": _sf(data["Open"].iloc[-1], price),
             "previousClose": prev_close,
             "lastUpdated": datetime.now(timezone.utc).isoformat(),
         }
