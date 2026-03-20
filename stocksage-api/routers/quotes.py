@@ -1,8 +1,6 @@
 from fastapi import APIRouter, HTTPException, Query
 from services.yahoo_service import get_quote, get_quotes_bulk, get_market_status
 from services.nse_service import get_nifty50_quotes
-from services.technical_service import compute_technicals
-from services.verdict_service import build_verdict
 from config import NIFTY50_SYMBOLS, SECTOR_MAP
 
 router = APIRouter(prefix="/api", tags=["quotes"])
@@ -26,6 +24,62 @@ async def quotes_bulk(symbols: str = Query(..., description="Comma-separated sym
     return get_quotes_bulk(symbol_list)
 
 
+def _simple_verdict(sym: str, price: float, change_pct: float,
+                    week_high52: float, week_low52: float) -> dict:
+    """
+    Lightweight verdict using only price-momentum data (no yfinance calls).
+    Used by the list endpoint so it works even when Yahoo Finance is blocked.
+    """
+    score = 0.0
+    reasons = []
+
+    # 1. Day momentum
+    if change_pct >= 2:
+        score += 3; reasons.append(f"Strong up-move +{change_pct:.1f}% today")
+    elif change_pct <= -2:
+        score -= 3; reasons.append(f"Sharp drop {change_pct:.1f}% today")
+    else:
+        score += change_pct * 0.5
+
+    # 2. 52-week position (where is price in the range?)
+    if week_high52 > week_low52:
+        position = (price - week_low52) / (week_high52 - week_low52)  # 0=low, 1=high
+        if position < 0.25:
+            score += 4; reasons.append("Near 52-week low — oversold zone")
+        elif position > 0.85:
+            score -= 3; reasons.append("Near 52-week high — stretched valuation")
+        elif 0.4 <= position <= 0.65:
+            score += 1; reasons.append("Mid-range — balanced price zone")
+
+    action     = "BUY" if score > 2 else "SELL" if score < -2 else "HOLD"
+    confidence = min(85, int(40 + abs(score) * 6))
+    target_mult = 1.12 if action == "BUY" else 0.90 if action == "SELL" else 1.04
+    stop_mult   = 0.93 if action == "BUY" else 1.05 if action == "SELL" else 0.96
+
+    return {
+        "action":      action,
+        "confidence":  confidence,
+        "targetPrice": round(price * target_mult, 2),
+        "stopLoss":    round(price * stop_mult, 2),
+        "timeHorizon": "short",
+        "composite":   round(score * 10, 2),
+        "reasoning": [
+            {"factor": "technical",    "score": round(score, 2), "weight": 0.30,
+             "summary": reasons[0] if reasons else "Price momentum analysis",
+             "signal": "positive" if score > 0 else "negative" if score < 0 else "neutral"},
+            {"factor": "fundamental",  "score": 0, "weight": 0.25,
+             "summary": "Fundamentals not loaded in list view", "signal": "neutral"},
+            {"factor": "sentiment",    "score": 0, "weight": 0.20,
+             "summary": "Sentiment data pending", "signal": "neutral"},
+            {"factor": "geopolitical", "score": 0, "weight": 0.15,
+             "summary": "Geo data pending", "signal": "neutral"},
+            {"factor": "insider",      "score": 0, "weight": 0.10,
+             "summary": "Insider data pending", "signal": "neutral"},
+        ],
+        "analystCount": 0,
+    }
+
+
 @router.get("/stocks")
 async def all_stocks(
     verdict: str = Query("all"),
@@ -34,38 +88,11 @@ async def all_stocks(
     limit:   int = Query(50),
 ):
     """
-    Returns all NIFTY50 stocks with live quotes, technicals, fundamentals
-    and computed verdict. This is the main data endpoint for Discover page.
-    Cached aggressively to avoid rate-limiting Yahoo Finance.
+    Returns all NIFTY50 stocks with live quotes and a lightweight verdict.
+    Uses NSE India API only (no per-stock yfinance calls) so it works from
+    cloud servers where Yahoo Finance is IP-blocked.
     """
-    from services.yahoo_service import get_history, get_fundamentals
-    from concurrent.futures import ThreadPoolExecutor, as_completed
-
-    def _process_stock(q):
-        sym = q["symbol"]
-        history = get_history(sym, "3m")
-        fund    = get_fundamentals(sym)
-        tech    = compute_technicals(history)
-        v       = build_verdict(sym, q["price"], fund, tech)
-        return {
-            **q,
-            "name":      fund.get("description", sym)[:60] or sym,
-            "sector":    SECTOR_MAP.get(sym, fund.get("sector", "Other")),
-            "marketCap": "large" if (fund.get("marketCapCr") or 0) > 20000 else "mid" if (fund.get("marketCapCr") or 0) > 5000 else "small",
-            "logo":      sym[:2],
-            "color":     _sector_color(SECTOR_MAP.get(sym, "Other")),
-            "weekHigh52":fund.get("weekHigh52", 0),
-            "weekLow52": fund.get("weekLow52", 0),
-            "avgVolume": fund.get("avgVolume", 0),
-            "priceHistory": history[-90:],
-            "fundamentals": fund,
-            "technicals":   tech,
-            "sentiment": {"overall": 20, "news": 18, "social": 22, "analyst": 25, "geopolitical": 15, "fearGreedIndex": 55},
-            "insiderTrades": [],
-            "verdict": v,
-        }
-
-    # Try NSE India API first (fast, reliable), fall back to yfinance
+    # Fetch all quotes in one NSE call (fast, no per-stock calls)
     nse_quotes = get_nifty50_quotes()
     if nse_quotes:
         quotes = [nse_quotes[s] for s in NIFTY50_SYMBOLS[:limit] if s in nse_quotes]
@@ -74,21 +101,37 @@ async def all_stocks(
                   if not ("error" in q and "price" not in q)]
 
     results = []
-    with ThreadPoolExecutor(max_workers=10) as executor:
-        future_map = {executor.submit(_process_stock, q): q for q in quotes}
-        for future in as_completed(future_map):
-            try:
-                stock = future.result()
-                v = stock["verdict"]
-                if verdict != "all" and v["action"] != verdict.upper():
-                    continue
-                if sector != "all" and stock["sector"].lower() != sector.lower():
-                    continue
-                if cap != "all" and stock["marketCap"] != cap.lower():
-                    continue
-                results.append(stock)
-            except Exception:
-                pass
+    for q in quotes:
+        try:
+            sym        = q["symbol"]
+            price      = q.get("price", 0)
+            change_pct = q.get("changePercent", 0)
+            w52h       = q.get("weekHigh52", 0)
+            w52l       = q.get("weekLow52", 0)
+            sec        = SECTOR_MAP.get(sym, "Other")
+            v          = _simple_verdict(sym, price, change_pct, w52h, w52l)
+
+            if verdict != "all" and v["action"] != verdict.upper():
+                continue
+            if sector != "all" and sec.lower() != sector.lower():
+                continue
+
+            results.append({
+                **q,
+                "name":         sym,
+                "sector":       sec,
+                "marketCap":    "large",   # NIFTY50 are all large-cap
+                "logo":         sym[:2],
+                "color":        _sector_color(sec),
+                "priceHistory": [],        # loaded on detail page
+                "fundamentals": {},
+                "technicals":   {},
+                "sentiment":    {"overall": 0, "fearGreedIndex": 55},
+                "insiderTrades": [],
+                "verdict":      v,
+            })
+        except Exception:
+            pass
 
     return results
 
