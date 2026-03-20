@@ -5,6 +5,7 @@ All NSE stocks use the .NS suffix (e.g. RELIANCE.NS).
 import math
 import yfinance as yf
 import pandas as pd
+import requests as _requests
 from datetime import datetime, timezone
 from cachetools import TTLCache, cached
 import threading
@@ -12,6 +13,21 @@ from config import (
     NSE_SUFFIX, QUOTE_CACHE_TTL, HISTORY_CACHE_TTL,
     FUNDAMENTAL_CACHE_TTL, INDEX_CACHE_TTL, SECTOR_MAP
 )
+
+# Browser-like session — Yahoo Finance blocks bare cloud-server IPs
+_yf_session = _requests.Session()
+_yf_session.headers.update({
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/122.0.0.0 Safari/537.36"
+    ),
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.5",
+    "Accept-Encoding": "gzip, deflate",
+    "DNT": "1",
+    "Connection": "keep-alive",
+})
 
 
 def _sf(val, default=None, decimals=2):
@@ -66,7 +82,7 @@ def get_quote(symbol: str) -> dict:
 
     ticker_str = _yf_ticker(symbol)
     try:
-        t = yf.Ticker(ticker_str)
+        t = yf.Ticker(ticker_str, session=_yf_session)
         info = t.fast_info
         hist = t.history(period="2d", interval="1d")
 
@@ -107,7 +123,8 @@ def get_quotes_bulk(symbols: list) -> list:
     try:
         data = yf.download(
             tickers, period="2d", interval="1d",
-            group_by="ticker", auto_adjust=True, progress=False, threads=True
+            group_by="ticker", auto_adjust=True, progress=False, threads=True,
+            session=_yf_session
         )
         results = []
         for ticker_str, symbol in ticker_to_symbol.items():
@@ -169,7 +186,7 @@ def get_history(symbol: str, period: str = "3mo") -> list:
 
     ticker_str = _yf_ticker(symbol)
     try:
-        t = yf.Ticker(ticker_str)
+        t = yf.Ticker(ticker_str, session=_yf_session)
         interval = "1h" if yf_period in ("5d",) else "1d"
         hist = t.history(period=yf_period, interval=interval, auto_adjust=True)
         hist.index = hist.index.tz_localize(None) if hist.index.tzinfo else hist.index
@@ -202,7 +219,7 @@ def get_fundamentals(symbol: str) -> dict:
 
     ticker_str = _yf_ticker(symbol)
     try:
-        t = yf.Ticker(ticker_str)
+        t = yf.Ticker(ticker_str, session=_yf_session)
         info = t.info
         fin  = t.financials   # annual income statement
         bs   = t.balance_sheet
@@ -262,7 +279,7 @@ def get_index_quote(index_id: str, yf_ticker: str) -> dict:
             return _quote_cache[key]
 
     try:
-        t = yf.Ticker(yf_ticker)
+        t = yf.Ticker(yf_ticker, session=_yf_session)
         hist = t.history(period="2d", interval="1d")
         info = t.fast_info
 
