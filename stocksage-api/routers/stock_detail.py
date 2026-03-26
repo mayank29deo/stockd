@@ -84,7 +84,14 @@ async def stock_detail(symbol: str):
 
     quote = get_best_quote(sym)
     if "error" in quote and "price" not in quote:
-        raise HTTPException(status_code=404, detail=f"Stock {sym} not found")
+        # Only hard-404 if the symbol is completely unknown — not even in SECTOR_MAP.
+        # For known NSE stocks where live data is temporarily unavailable (e.g. no
+        # RapidAPI key, NSE endpoint blocked) we still return metadata so the
+        # frontend can show the stock page rather than a "not found" error.
+        if sym not in SECTOR_MAP:
+            raise HTTPException(status_code=404, detail=f"Stock {sym} not found")
+        # Known stock — clear the error and continue with an empty quote
+        quote = {"symbol": sym, "price": None, "dataType": "unavailable"}
 
     history = _get_history(sym, "1y")
     fund    = _get_fundamentals(sym)

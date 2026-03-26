@@ -1,6 +1,14 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { stocksApi, indicesApi, sentimentApi, marketApi } from '../api/stocks'
 import { STOCKS as MOCK_STOCKS, INDICES as MOCK_INDICES, MARKET_MOOD as MOCK_MOOD, GEOPOLITICAL_NEWS as MOCK_NEWS } from '../data/mock/stocks'
+import { NSE_STOCKS } from '../data/nseStocks'
+
+// Sector → accent color (keep in sync with backend _sector_color)
+const SECTOR_COLORS = {
+  IT: '#3B82F6', Banking: '#8B5CF6', FMCG: '#10B981', Pharma: '#06B6D4',
+  Auto: '#F59E0B', Energy: '#EF4444', Infra: '#6366F1', Metals: '#78716C',
+  Internet: '#EC4899', Fintech: '#14B8A6', Retail: '#F97316',
+}
 
 const POLL_INTERVAL_MS = 60 * 1000  // refresh every 60s
 
@@ -81,10 +89,20 @@ export function useStocks(filters = {}) {
 // ── Single stock detail ───────────────────────────────────────────────────────
 export function useStockDetail(symbol) {
   const mockStock = MOCK_STOCKS.find(s => s.symbol === symbol) || null
+  // For non-mock stocks (NYKAA, PAYTM, IRFC…) build a minimal stub from NSE_STOCKS
+  // so the page renders with at least the name/sector while the API loads.
+  const nse = !mockStock ? NSE_STOCKS.find(s => s.symbol === symbol) : null
+  const fallback = mockStock || (nse ? {
+    id: symbol, symbol,
+    name: nse.name,
+    sector: nse.sector,
+    color: SECTOR_COLORS[nse.sector] || '#FF6B35',
+    price: null, changePercent: null, priceHistory: [],
+  } : null)
   return useLiveData(
     `stock:${symbol}`,
     () => stocksApi.getDetail(symbol),
-    mockStock,
+    fallback,
     [symbol],
     5 * 60 * 1000,   // stock detail cached 5 min
   )

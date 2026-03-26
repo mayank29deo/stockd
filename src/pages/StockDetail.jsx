@@ -85,7 +85,7 @@ export const StockDetail = () => {
     )
   }
 
-  const isPos = stock.changePercent >= 0
+  const isPos = (stock.changePercent ?? 0) >= 0
   // Recompute verdict locally whenever horizon changes — instant, no API call needed
   const verdict = computeVerdict(stock, horizon) || stock.verdict
   const fund = stock.fundamentals
