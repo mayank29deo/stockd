@@ -20,24 +20,28 @@
 // ── Horizon configuration ─────────────────────────────────────────────────────
 export const HORIZON_CONFIG = {
   short: {
-    weights:   { momentum: 0.38, technical: 0.32, value: 0.06, quality: 0.10, growth: 0.08, risk: 0.06 },
-    buyAt:     11,   sellAt: -11,
-    targetMul: { BUY: 1.08, SELL: 0.93, HOLD: 1.03 },
-    stopMul:   { BUY: 0.95, SELL: 1.04, HOLD: 0.97 },
+    // Short-term: momentum + technicals dominate; fundamental data often absent
+    // buyAt/sellAt calibrated for realistic composite range when 2-3 factors have data
+    weights:    { momentum: 0.40, technical: 0.34, value: 0.05, quality: 0.08, growth: 0.06, risk: 0.07 },
+    buyAt:      7,   sellAt: -7,
+    targetMul:  { BUY: 1.08, SELL: 0.93, HOLD: 1.03 },
+    stopMul:    { BUY: 0.95, SELL: 1.04, HOLD: 0.97 },
     riskReward: { BUY: '1:2.1', SELL: '1:1.9' },
   },
   mid: {
-    weights:   { momentum: 0.18, technical: 0.18, value: 0.16, quality: 0.24, growth: 0.18, risk: 0.06 },
-    buyAt:     14,   sellAt: -14,
-    targetMul: { BUY: 1.18, SELL: 0.86, HOLD: 1.06 },
-    stopMul:   { BUY: 0.91, SELL: 1.08, HOLD: 0.94 },
+    // Mid-term: balanced; needs both technical trend + some fundamental backing
+    weights:    { momentum: 0.18, technical: 0.18, value: 0.16, quality: 0.24, growth: 0.18, risk: 0.06 },
+    buyAt:      9,   sellAt: -9,
+    targetMul:  { BUY: 1.18, SELL: 0.86, HOLD: 1.06 },
+    stopMul:    { BUY: 0.91, SELL: 1.08, HOLD: 0.94 },
     riskReward: { BUY: '1:2.5', SELL: '1:2.3' },
   },
   long: {
-    weights:   { momentum: 0.06, technical: 0.06, value: 0.27, quality: 0.30, growth: 0.26, risk: 0.05 },
-    buyAt:     16,   sellAt: -16,
-    targetMul: { BUY: 1.40, SELL: 0.72, HOLD: 1.15 },
-    stopMul:   { BUY: 0.83, SELL: 1.15, HOLD: 0.90 },
+    // Long-term: fundamentals dominate — without P/E, ROE, growth data HOLD is correct
+    weights:    { momentum: 0.05, technical: 0.05, value: 0.28, quality: 0.32, growth: 0.25, risk: 0.05 },
+    buyAt:      11,  sellAt: -11,
+    targetMul:  { BUY: 1.40, SELL: 0.72, HOLD: 1.15 },
+    stopMul:    { BUY: 0.83, SELL: 1.15, HOLD: 0.90 },
     riskReward: { BUY: '1:4.0', SELL: '1:3.5' },
   },
 }
@@ -55,7 +59,7 @@ export const HORIZON_LABELS = {
 const scoreMomentum = (tech, quote) => {
   let score = 0
   const rsi     = tech?.rsi14 ?? 50
-  const macdH   = tech?.macd?.histogram ?? 0
+  const macdH   = tech?.macd?.histogram ?? null
   const trend   = tech?.trend
   const chg     = quote?.changePercent ?? 0
   const volume  = quote?.volume ?? 0
@@ -71,10 +75,12 @@ const scoreMomentum = (tech, quote) => {
   else if (rsi > 62) score -= 3
   else if (rsi > 55) score -= 1
 
-  // MACD histogram magnitude (not just sign)
-  const macdStrength = Math.min(4, Math.abs(macdH) * 0.05 + 2.5)
-  if   (macdH > 0) score += macdStrength
-  else             score -= macdStrength
+  // MACD histogram — only score when data is present (null/0 = no signal, not negative)
+  if (macdH !== null && Math.abs(macdH) > 0.01) {
+    const macdStrength = Math.min(4, Math.abs(macdH) * 0.08 + 1.2)
+    if (macdH > 0) score += macdStrength
+    else           score -= macdStrength
+  }
 
   // Trend confirmation
   if   (trend === 'bullish')  score += 3
@@ -97,7 +103,14 @@ const scoreMomentum = (tech, quote) => {
   else if (volRatio > 3.0 && chg < 0) score -= 4  // heavy distribution
   else if (volRatio > 2.0 && chg < 0) score -= 2  // selling pressure
 
-  return Math.max(-10, Math.min(10, score / 3.2))
+  // Confluence boost: RSI + price direction aligning = institutional signal
+  // (e.g. RSI oversold AND price bouncing up = strong short-term BUY)
+  if      (rsi < 35 && chg > 0)    score += 3  // oversold + bounce
+  else if (rsi < 35 && chg > 1.5)  score += 2  // oversold + strong bounce
+  else if (rsi > 65 && chg < 0)    score -= 3  // overbought + selling
+  else if (rsi > 65 && chg < -1.5) score -= 2  // overbought + strong selling
+
+  return Math.max(-10, Math.min(10, score / 3.5))
 }
 
 // ── Factor 2: TECHNICAL ───────────────────────────────────────────────────────
@@ -335,8 +348,18 @@ export const computeVerdict = (stock, horizon = 'mid') => {
   const agreeingFactors = Object.values(scores).filter(s => s * direction > 0.5).length
   const conviction = Math.round((agreeingFactors / 6) * 100)
 
-  const action     = composite > buyAt ? 'BUY' : composite < sellAt ? 'SELL' : 'HOLD'
-  const confidence = Math.round(Math.min(95, Math.abs(composite) * 0.95 + 40 + conviction * 0.08))
+  const action = composite > buyAt ? 'BUY' : composite < sellAt ? 'SELL' : 'HOLD'
+
+  // Confidence: how far composite is from the threshold + conviction agreement
+  // BUY/SELL: starts at 50, scales up with distance from threshold
+  // HOLD: starts at 35 (we're uncertain — that's why it's a hold)
+  const base = action === 'HOLD' ? 35 : 50
+  const distanceFromThreshold = action === 'BUY'
+    ? Math.abs(composite - buyAt)
+    : action === 'SELL'
+    ? Math.abs(composite - sellAt)
+    : Math.min(Math.abs(composite - buyAt), Math.abs(composite - sellAt))
+  const confidence = Math.round(Math.min(95, base + distanceFromThreshold * 1.8 + conviction * 0.15))
   const price      = stock.price || 0
 
   // Risk/Reward ratio
