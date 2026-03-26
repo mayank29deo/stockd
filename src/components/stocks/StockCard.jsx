@@ -1,11 +1,20 @@
 import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { Star, Plus, TrendingUp, TrendingDown } from 'lucide-react'
+import { Star, TrendingUp, TrendingDown } from 'lucide-react'
 import { VerdictBadge, ExchangeBadge, ConfidenceBadge } from '../ui/Badge'
 import { MiniSparkline } from '../charts/MiniSparkline'
-import { formatINR, formatChange, getChangeColor } from '../../utils/formatters'
+import { formatINR, getChangeColor } from '../../utils/formatters'
 import { useWatchlistStore, useUIStore } from '../../store/index'
+import { stocksApi } from '../../api/stocks'
 import { clsx } from 'clsx'
+
+// Prefetch detail on hover so navigation feels instant
+const prefetched = new Set()
+const prefetchStock = (symbol) => {
+  if (!symbol || prefetched.has(symbol)) return
+  prefetched.add(symbol)
+  stocksApi.getDetail(symbol).catch(() => {})
+}
 
 export const StockCard = ({ stock, index = 0 }) => {
   const { addToWatchlist, removeFromWatchlist, isInWatchlist, activeWatchlistId } = useWatchlistStore()
@@ -35,7 +44,7 @@ export const StockCard = ({ stock, index = 0 }) => {
       transition={{ duration: 0.3, delay: index * 0.05 }}
       className="h-full"
     >
-      <Link to={`/stock/${stock.symbol}`} className="block h-full">
+      <Link to={`/stock/${stock.symbol}`} className="block h-full" onMouseEnter={() => prefetchStock(stock.symbol)}>
         <div className="bg-card border border-subtle rounded-xl p-4 hover:border-muted hover:shadow-card-hover transition-all duration-300 h-full flex flex-col gap-3">
           {/* Header */}
           <div className="flex items-start gap-2.5">
