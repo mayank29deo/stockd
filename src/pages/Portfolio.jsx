@@ -28,7 +28,8 @@ const ImportSection = ({ onImport }) => {
   const [preview, setPreview] = useState(null)
 
   const processFile = (file) => {
-    if (!file || !file.name.endsWith('.csv')) { setError('Please upload a CSV file'); return }
+    const isCSV = file && (file.name.endsWith('.csv') || file.type === 'text/csv' || file.type === 'application/vnd.ms-excel' || file.type === '')
+    if (!file || !isCSV) { setError('Please upload a CSV file'); return }
     const reader = new FileReader()
     reader.onload = (e) => {
       const result = parseCSV(e.target.result)
@@ -47,15 +48,28 @@ const ImportSection = ({ onImport }) => {
 
   const handleConfirmImport = () => {
     if (!preview) return
-    // Enrich with live prices from our mock data
+    // Try to enrich with live prices from mock NIFTY50 data.
+    // For non-NIFTY50 stocks (most of the portfolio), fall back to the
+    // values already parsed from the CSV (Previous Closing Price, Unrealized P&L, etc.)
     const enriched = preview.holdings.map(h => {
       const live = STOCKS.find(s => s.symbol === h.symbol || s.id === h.symbol)
+      const livePrice = live?.price ?? null
+      const effectivePrice = livePrice ?? h.currentPrice ?? h.avgBuyPrice
+      const effectiveValue = livePrice != null
+        ? livePrice * h.quantity
+        : (h.currentValue || effectivePrice * h.quantity)
+      const effectivePnl = livePrice != null
+        ? (livePrice - h.avgBuyPrice) * h.quantity
+        : (h.pnl || effectiveValue - h.investedValue)
+      const effectivePnlPct = livePrice != null
+        ? (h.avgBuyPrice > 0 ? ((livePrice - h.avgBuyPrice) / h.avgBuyPrice) * 100 : 0)
+        : (h.pnlPercent || (h.investedValue > 0 ? ((effectiveValue - h.investedValue) / h.investedValue) * 100 : 0))
       return {
         ...h,
-        currentPrice: live?.price || h.currentPrice || h.avgBuyPrice,
-        currentValue: (live?.price || h.avgBuyPrice) * h.quantity,
-        pnl: ((live?.price || h.avgBuyPrice) - h.avgBuyPrice) * h.quantity,
-        pnlPercent: h.avgBuyPrice > 0 ? (((live?.price || h.avgBuyPrice) - h.avgBuyPrice) / h.avgBuyPrice) * 100 : 0,
+        currentPrice: effectivePrice,
+        currentValue: effectiveValue,
+        pnl: effectivePnl,
+        pnlPercent: effectivePnlPct,
         verdict: live?.verdict || null,
       }
     })
@@ -299,7 +313,7 @@ export const Portfolio = () => {
           {/* Summary cards */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             {[
-              { label: 'Total Invested', value: formatINR(activePortfolio.totalPnL + activePortfolio.holdings?.reduce((s, h) => s + h.investedValue, 0) || 0, true) },
+              { label: 'Total Invested', value: formatINR(activePortfolio.holdings?.reduce((s, h) => s + h.investedValue, 0) || 0, true) },
               { label: 'Current Value', value: formatINR(activePortfolio.holdings?.reduce((s, h) => s + h.currentValue, 0) || 0, true) },
               {
                 label: 'Total P&L',

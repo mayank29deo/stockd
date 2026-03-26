@@ -1,68 +1,85 @@
 from fastapi import APIRouter
 from services.news_service import get_market_news
-import yfinance as yf
-from cachetools import TTLCache
-import threading
+from services.nse_service import get_india_vix
+import services.twelvedata_service as td
 
 router = APIRouter(prefix="/api/sentiment", tags=["sentiment"])
 
-_cache = TTLCache(maxsize=10, ttl=300)
-_lock  = threading.Lock()
+
+# ── Hardcoded fallbacks when APIs are unavailable ─────────────────────────────
+_DEFAULTS = {
+    "inrUsd":        0.012,   # approx INR/USD
+    "usdInr":        83.5,
+    "crudePriceUsd": 72.0,
+    "goldPriceInr":  62000.0,
+    "goldPriceUsd":  2050.0,
+    "indiaVix":      15.0,
+    "repoRate":      6.25,
+    "nextRbiDate":   "2026-06-06",
+    "fiiNetFlowCr":  0,         # real data needs NSDL scraper
+    "diiNetFlowCr":  0,
+}
+
+
+def _build_fear_greed(vix: float) -> tuple[int, str]:
+    """Compute Fear & Greed index (0-100) from India VIX."""
+    if vix > 25:   return 20, "Extreme Fear"
+    if vix > 20:   return 35, "Fear"
+    if vix > 15:   return 50, "Neutral"
+    if vix > 12:   return 65, "Greed"
+    return 80, "Extreme Greed"
 
 
 def _fetch_macro() -> dict:
-    key = "macro"
-    with _lock:
-        if key in _cache:
-            return _cache[key]
+    """
+    Assembles macro data from:
+      - India VIX    → NSE allIndices (free, no key)
+      - INR/USD      → Twelve Data (key required)
+      - Crude oil    → Twelve Data (key required)
+      - Gold         → Twelve Data (key required)
+      - Repo rate    → hardcoded (updated manually)
+      - FII/DII      → placeholder (needs NSDL scraper)
+    """
+    # 1. India VIX — free from NSE
+    vix = get_india_vix()
 
-    def safe_price(ticker_str: str) -> float:
-        try:
-            t    = yf.Ticker(ticker_str)
-            hist = t.history(period="2d", interval="1d")
-            return round(float(hist["Close"].iloc[-1]), 2) if not hist.empty else 0.0
-        except Exception:
-            return 0.0
+    # 2. Macro from Twelve Data (gracefully falls back to defaults)
+    macro = {}
+    if td.available():
+        macro = td.get_macro()
 
-    result = {
-        "inrUsd":        safe_price("INR=X"),
-        "crudePriceUsd": safe_price("BZ=F"),
-        "goldPriceInr":  safe_price("GC=F") * safe_price("INR=X"),  # Gold in USD × INR/USD
-        "indiaVix":      safe_price("^INDIAVIX"),
-        "repoRate":      6.25,     # Updated manually / via RBI scraper
-        "nextRbiDate":   "2026-06-06",
+    inr_usd  = macro.get("inrUsd")        or _DEFAULTS["inrUsd"]
+    usd_inr  = macro.get("usdInr")        or _DEFAULTS["usdInr"]
+    crude    = macro.get("crudePriceUsd") or _DEFAULTS["crudePriceUsd"]
+    gold_inr = macro.get("goldPriceInr")  or _DEFAULTS["goldPriceInr"]
+    gold_usd = macro.get("goldPriceUsd")  or _DEFAULTS["goldPriceUsd"]
+
+    fg_value, fg_label = _build_fear_greed(vix)
+
+    return {
+        "indiaVix":       round(vix, 2),
+        "inrUsd":         inr_usd,
+        "usdInr":         usd_inr,
+        "crudePriceUsd":  crude,
+        "goldPriceInr":   gold_inr,
+        "goldPriceUsd":   gold_usd,
+        "repoRate":       _DEFAULTS["repoRate"],
+        "nextRbiDate":    _DEFAULTS["nextRbiDate"],
+        "fiiNetFlowCr":   _DEFAULTS["fiiNetFlowCr"],
+        "diiNetFlowCr":   _DEFAULTS["diiNetFlowCr"],
+        "fearGreedIndex": fg_value,
+        "fearGreedLabel": fg_label,
+        "description": (
+            f"India VIX at {vix:.1f} — {fg_label.lower()} territory. "
+            f"INR/USD at {usd_inr:.2f}. Brent crude at ${crude:.1f}/bbl."
+        ),
+        "dataSource": "twelvedata" if td.available() else "defaults",
     }
-
-    # Compute simple Fear & Greed proxy:
-    # VIX > 20 = fear, < 12 = greed, 12-20 = neutral
-    vix = result["indiaVix"] or 14
-    if vix > 25:   fg = 20
-    elif vix > 20: fg = 35
-    elif vix > 15: fg = 50
-    elif vix > 12: fg = 65
-    else:          fg = 80
-    result["fearGreedIndex"] = fg
-    result["fearGreedLabel"] = (
-        "Extreme Greed" if fg >= 75 else "Greed" if fg >= 55 else
-        "Neutral" if fg >= 45 else "Fear" if fg >= 25 else "Extreme Fear"
-    )
-
-    # FII/DII placeholder (would need NSDL scraper for real data)
-    result["fiiNetFlowCr"] = 3240
-    result["diiNetFlowCr"] = -1820
-    result["description"]  = (
-        "Markets in greed zone driven by FII inflows and strong macro data. "
-        "Remain cautious on overextended large caps."
-    )
-
-    with _lock:
-        _cache[key] = result
-    return result
 
 
 @router.get("/market")
 async def market_sentiment():
-    """India market mood — Fear & Greed, macro indicators."""
+    """India market mood — Fear & Greed, macro indicators, news."""
     macro = _fetch_macro()
     news  = get_market_news()
     return {**macro, "geopoliticalNews": news[:6]}
@@ -75,9 +92,11 @@ async def geopolitical():
 
 @router.get("/fear-greed")
 async def fear_greed():
-    macro = _fetch_macro()
+    vix = get_india_vix()
+    fg_value, fg_label = _build_fear_greed(vix)
     return {
-        "value":       macro["fearGreedIndex"],
-        "label":       macro["fearGreedLabel"],
-        "description": macro["description"],
+        "value":       fg_value,
+        "label":       fg_label,
+        "vix":         round(vix, 2),
+        "description": f"India VIX at {vix:.1f} — {fg_label.lower()} zone.",
     }

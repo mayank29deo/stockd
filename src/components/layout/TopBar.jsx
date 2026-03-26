@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Search, TrendingUp, Menu, X, Loader2 } from 'lucide-react'
+import { Search, TrendingUp, Menu, X, Loader2, Clock } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { STOCKS, INDICES } from '../../data/mock/stocks'
 import { NSE_STOCKS } from '../../data/nseStocks'
@@ -8,17 +8,38 @@ import { stocksApi } from '../../api/stocks'
 import { formatINR, getChangeColor } from '../../utils/formatters'
 import { UserMenu } from '../auth/UserMenu'
 import { NotificationBell } from '../notifications/NotificationPanel'
+import { useMarketStatus } from '../../hooks/useStocks'
 import { clsx } from 'clsx'
 
 const MarketStatus = () => {
-  const now = new Date()
-  const hours = now.getHours()
-  const mins = now.getMinutes()
-  const isOpen = hours >= 9 && (hours < 15 || (hours === 15 && mins <= 30))
+  const { data: status } = useMarketStatus()
+  const isOpen = status?.isOpen ?? false
+  const lastDate = status?.lastSnapshotDate
+
+  // Format date as "Mar 21" for compact display
+  const formatDate = (d) => {
+    if (!d) return ''
+    try {
+      return new Date(d + 'T00:00:00').toLocaleDateString('en-IN', { month: 'short', day: 'numeric' })
+    } catch { return d }
+  }
+
+  if (isOpen) {
+    return (
+      <div className="flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full border border-bull/20 bg-bull/10 text-bull">
+        <div className="w-1.5 h-1.5 rounded-full bg-bull animate-pulse" />
+        NSE Live
+      </div>
+    )
+  }
+
   return (
-    <div className={clsx('flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full border', isOpen ? 'border-bull/20 bg-bull/10 text-bull' : 'border-bear/20 bg-bear/10 text-bear')}>
-      <div className={clsx('w-1.5 h-1.5 rounded-full', isOpen ? 'bg-bull animate-pulse' : 'bg-bear')} />
-      {isOpen ? 'NSE Live' : 'Market Closed'}
+    <div className="flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full border border-subtle bg-surface text-secondary">
+      <Clock size={11} className="text-faded" />
+      <span>Closed</span>
+      {lastDate && (
+        <span className="text-faded font-normal">· {formatDate(lastDate)}</span>
+      )}
     </div>
   )
 }

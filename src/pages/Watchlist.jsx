@@ -20,7 +20,7 @@ export const Watchlist = () => {
   const [loadingLive, setLoadingLive] = useState(false)
 
   const active = getActiveWatchlist()
-  const symbols = active?.stockIds ?? []
+  const symbols = (active?.stockIds ?? []).filter(Boolean)  // strip any null/undefined entries
 
   // Fetch live quotes for ALL watchlisted symbols (not limited to mock data)
   useEffect(() => {
@@ -137,7 +137,7 @@ export const Watchlist = () => {
                   <Link to={`/stock/${stock.symbol}`} className="flex items-center gap-3 flex-1 min-w-0">
                     <div className="w-9 h-9 rounded-lg flex items-center justify-center text-xs font-bold text-white flex-shrink-0"
                       style={{ backgroundColor: stock.color || '#FF6B35' }}>
-                      {stock.symbol.slice(0, 2)}
+                      {(stock.symbol || '??').slice(0, 2)}
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-1.5">

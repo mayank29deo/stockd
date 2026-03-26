@@ -1,9 +1,29 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
-import { Suspense, lazy, useEffect } from 'react'
+import { Suspense, lazy, useEffect, Component } from 'react'
 import { RootLayout } from './components/layout/RootLayout'
 import { Dashboard } from './pages/Dashboard'
 import { AuthModal } from './components/auth/AuthModal'
 import { useAuthStore } from './store/authStore'
+
+class ErrorBoundary extends Component {
+  state = { error: null }
+  static getDerivedStateFromError(error) { return { error } }
+  render() {
+    if (this.state.error) return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] px-4 text-center">
+        <p className="text-bear font-semibold mb-2">Something went wrong</p>
+        <p className="text-xs text-faded font-mono bg-elevated border border-subtle rounded px-3 py-2 max-w-xl break-all">
+          {this.state.error.message}
+        </p>
+        <button onClick={() => { this.setState({ error: null }); window.location.href = '/' }}
+          className="mt-4 text-sm text-saffron-500 hover:underline">
+          Go to Dashboard
+        </button>
+      </div>
+    )
+    return this.props.children
+  }
+}
 
 const Discover = lazy(() => import('./pages/Discover').then(m => ({ default: m.Discover })))
 const StockDetail = lazy(() => import('./pages/StockDetail').then(m => ({ default: m.StockDetail })))
@@ -34,15 +54,15 @@ export default function App() {
       <Routes>
         <Route element={<RootLayout />}>
           <Route index element={<Dashboard />} />
-          <Route path="discover" element={<Suspense fallback={<PageFallback />}><Discover /></Suspense>} />
-          <Route path="stock/:symbol" element={<Suspense fallback={<PageFallback />}><StockDetail /></Suspense>} />
-          <Route path="portfolio" element={<Suspense fallback={<PageFallback />}><Portfolio /></Suspense>} />
-          <Route path="watchlist" element={<Suspense fallback={<PageFallback />}><Watchlist /></Suspense>} />
-          <Route path="sentiment" element={<Suspense fallback={<PageFallback />}><Sentiment /></Suspense>} />
-          <Route path="screener" element={<Suspense fallback={<PageFallback />}><Screener /></Suspense>} />
-          <Route path="compare" element={<Suspense fallback={<PageFallback />}><Compare /></Suspense>} />
-          <Route path="calendar" element={<Suspense fallback={<PageFallback />}><Calendar /></Suspense>} />
-          <Route path="settings" element={<Suspense fallback={<PageFallback />}><Settings /></Suspense>} />
+          <Route path="discover" element={<ErrorBoundary><Suspense fallback={<PageFallback />}><Discover /></Suspense></ErrorBoundary>} />
+          <Route path="stock/:symbol" element={<ErrorBoundary><Suspense fallback={<PageFallback />}><StockDetail /></Suspense></ErrorBoundary>} />
+          <Route path="portfolio" element={<ErrorBoundary><Suspense fallback={<PageFallback />}><Portfolio /></Suspense></ErrorBoundary>} />
+          <Route path="watchlist" element={<ErrorBoundary><Suspense fallback={<PageFallback />}><Watchlist /></Suspense></ErrorBoundary>} />
+          <Route path="sentiment" element={<ErrorBoundary><Suspense fallback={<PageFallback />}><Sentiment /></Suspense></ErrorBoundary>} />
+          <Route path="screener" element={<ErrorBoundary><Suspense fallback={<PageFallback />}><Screener /></Suspense></ErrorBoundary>} />
+          <Route path="compare" element={<ErrorBoundary><Suspense fallback={<PageFallback />}><Compare /></Suspense></ErrorBoundary>} />
+          <Route path="calendar" element={<ErrorBoundary><Suspense fallback={<PageFallback />}><Calendar /></Suspense></ErrorBoundary>} />
+          <Route path="settings" element={<ErrorBoundary><Suspense fallback={<PageFallback />}><Settings /></Suspense></ErrorBoundary>} />
         </Route>
       </Routes>
     </BrowserRouter>

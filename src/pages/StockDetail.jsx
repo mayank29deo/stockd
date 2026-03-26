@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { ArrowLeft, Star, TrendingUp, TrendingDown, Target, ShieldAlert, Clock, ExternalLink, RefreshCw } from 'lucide-react'
@@ -7,6 +8,7 @@ import { VerdictBadge, ExchangeBadge, SectorBadge } from '../components/ui/Badge
 import { formatINR, formatDate, getChangeColor, formatPercent, formatVolume } from '../utils/formatters'
 import { useWatchlistStore, useUIStore } from '../store/index'
 import { useStockDetail, useStockHistory } from '../hooks/useStocks'
+import { computeVerdict, HORIZON_LABELS } from '../utils/verdictEngine'
 import { clsx } from 'clsx'
 import {
   RadarChart, PolarGrid, PolarAngleAxis, Radar,
@@ -14,11 +16,12 @@ import {
 } from 'recharts'
 
 const FACTOR_LABELS = {
+  momentum:  'Momentum',
   technical: 'Technical',
-  fundamental: 'Fundamental',
-  sentiment: 'Sentiment',
-  geopolitical: 'Geopolitical',
-  insider: 'Insider',
+  value:     'Value',
+  quality:   'Quality',
+  growth:    'Growth',
+  risk:      'Risk',
 }
 
 const getRsiLabel = (rsi) => {
@@ -57,6 +60,7 @@ export const StockDetail = () => {
   const { symbol } = useParams()
   const { addToWatchlist, removeFromWatchlist, isInWatchlist, activeWatchlistId } = useWatchlistStore()
   const { addToast } = useUIStore()
+  const [horizon, setHorizon] = useState('mid')
 
   const { data: stock, loading, isLive, refetch } = useStockDetail(symbol)
   const { data: priceHistory } = useStockHistory(symbol, '1y')
@@ -82,7 +86,8 @@ export const StockDetail = () => {
   }
 
   const isPos = stock.changePercent >= 0
-  const verdict = stock.verdict
+  // Recompute verdict locally whenever horizon changes — instant, no API call needed
+  const verdict = computeVerdict(stock, horizon) || stock.verdict
   const fund = stock.fundamentals
   const tech = stock.technicals
 
@@ -101,12 +106,14 @@ export const StockDetail = () => {
   const similarStocks = STOCKS.filter(s => s.sector === stock.sector && s.symbol !== stock.symbol).slice(0, 4)
 
   const handleWatchlist = () => {
+    const stockKey = stock.symbol || stock.id
+    if (!stockKey) return   // guard: never add null/undefined to watchlist
     if (inWatchlist) {
-      removeFromWatchlist(activeWatchlistId, stock.id || stock.symbol)
-      addToast({ type: 'info', title: 'Removed from Watchlist', message: stock.symbol })
+      removeFromWatchlist(activeWatchlistId, stockKey)
+      addToast({ type: 'info', title: 'Removed from Watchlist', message: stockKey })
     } else {
-      addToWatchlist(activeWatchlistId, stock.id || stock.symbol)
-      addToast({ type: 'success', title: 'Added to Watchlist', message: stock.symbol })
+      addToWatchlist(activeWatchlistId, stockKey)
+      addToast({ type: 'success', title: 'Added to Watchlist', message: stockKey })
     }
   }
 
@@ -173,6 +180,24 @@ export const StockDetail = () => {
               <Star size={14} className={inWatchlist ? 'fill-saffron-500' : ''} />
               {inWatchlist ? 'Watching' : 'Watchlist'}
             </button>
+            {/* Time horizon toggle */}
+            <div className="flex items-center gap-1 bg-elevated border border-subtle rounded-lg p-1">
+              {Object.entries(HORIZON_LABELS).map(([key, h]) => (
+                <button
+                  key={key}
+                  onClick={() => setHorizon(key)}
+                  className={clsx(
+                    'flex flex-col items-center px-3 py-1.5 rounded-md text-[10px] font-semibold transition-all',
+                    horizon === key
+                      ? 'bg-saffron-500/15 text-saffron-500 border border-saffron-500/30'
+                      : 'text-secondary hover:text-primary'
+                  )}
+                >
+                  <span>{h.label}</span>
+                  <span className="text-[9px] font-normal opacity-70">{h.sub}</span>
+                </button>
+              ))}
+            </div>
             {verdict && (
               <div className="text-center">
                 <VerdictBadge verdict={verdict.action} size="lg" />
@@ -203,14 +228,19 @@ export const StockDetail = () => {
               <Clock size={14} className="text-caution flex-shrink-0" />
               <div>
                 <p className="text-[10px] text-faded">Time Horizon</p>
-                <p className="text-sm font-semibold text-primary capitalize">{verdict.timeHorizon}-term</p>
+                <p className={clsx('text-sm font-semibold capitalize', HORIZON_LABELS[horizon]?.color)}>
+                  {HORIZON_LABELS[horizon]?.label}-term · {HORIZON_LABELS[horizon]?.sub}
+                </p>
               </div>
             </div>
             <div className="flex items-center gap-2">
               <ExternalLink size={14} className="text-secondary flex-shrink-0" />
               <div>
-                <p className="text-[10px] text-faded">Analyst Coverage</p>
-                <p className="text-sm font-semibold text-primary">{verdict.analystCount || '—'} analysts</p>
+                <p className="text-[10px] text-faded">Conviction · Risk/Reward</p>
+                <p className="text-sm font-semibold text-primary">
+                  {verdict.conviction != null ? `${verdict.conviction}%` : '—'}
+                  {verdict.riskRewardRatio != null ? ` · ${verdict.riskRewardRatio}x` : ''}
+                </p>
               </div>
             </div>
           </div>
@@ -244,7 +274,7 @@ export const StockDetail = () => {
         </div>
       </motion.div>
 
-      {/* 5-Factor Analysis + Radar */}
+      {/* 6-Factor Analysis + Radar */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         {/* Verdict breakdown */}
         <motion.div initial={{ opacity: 0, x: -16 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.15 }}

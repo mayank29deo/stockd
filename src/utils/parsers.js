@@ -111,14 +111,42 @@ export const parseGenericCSV = (csvString) => {
 }
 
 export const detectBroker = (csvString) => {
-  if (csvString.includes('Groww') || csvString.includes('Average Price') && csvString.includes('Total Returns')) return 'groww'
+  // Check zerodha_statement FIRST — its files contain the word "Zerodha" in metadata
+  if (csvString.includes('Quantity Available') && csvString.includes('Unrealized P&L')) return 'zerodha_statement'
+  if (csvString.includes('Groww') || (csvString.includes('Average Price') && csvString.includes('Total Returns'))) return 'groww'
   if (csvString.includes('Avg. cost') || csvString.includes('Zerodha')) return 'zerodha'
   return 'generic'
+}
+
+export const parseZerodhaStatementCSV = (csvString) => {
+  const lines = csvString.replace(/^\uFEFF/, '').split('\n')
+  const headerIndex = lines.findIndex(l => l.includes('Quantity Available') && l.includes('Average Price'))
+  if (headerIndex < 0) return { holdings: [], errors: ['Could not find holdings data in file'] }
+  const cleanCsv = lines.slice(headerIndex).join('\n')
+  const { data, errors } = Papa.parse(cleanCsv, { header: true, skipEmptyLines: true })
+  if (errors.length > 0) return { holdings: [], errors: errors.map(e => e.message) }
+  const holdings = data.map(row => {
+    const symbol = (row['Symbol'] || '').replace(/\.NS$|\.BO$/, '').toUpperCase().trim()
+    const qty = cleanNumber(row['Quantity Available'])
+    const avgPrice = cleanNumber(row['Average Price'])
+    const curPrice = cleanNumber(row['Previous Closing Price'])
+    const pnl = cleanNumber(row['Unrealized P&L'])
+    const pnlPct = cleanNumber(row['Unrealized P&L Pct.'])
+    const invested = qty * avgPrice
+    const current = qty * curPrice
+    return normalizeHolding({
+      symbol, name: symbol,
+      quantity: qty, avgBuyPrice: avgPrice, currentPrice: curPrice,
+      investedValue: invested, currentValue: current, pnl, pnlPercent: pnlPct,
+    }, 'zerodha')
+  }).filter(h => h.valid)
+  return { holdings, errors: [] }
 }
 
 export const parseCSV = (csvString) => {
   const broker = detectBroker(csvString)
   if (broker === 'groww') return { ...parseGrowwCSV(csvString), broker }
   if (broker === 'zerodha') return { ...parseZerodhaCSV(csvString), broker }
+  if (broker === 'zerodha_statement') return { ...parseZerodhaStatementCSV(csvString), broker: 'zerodha' }
   return { ...parseGenericCSV(csvString), broker }
 }

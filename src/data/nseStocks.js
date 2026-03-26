@@ -54,7 +54,8 @@ export const NSE_STOCKS = [
   { symbol: 'UPL',         name: 'UPL',                         sector: 'Chemicals' },
 
   // Nifty Next 50 / Popular Midcap
-  { symbol: 'ZOMATO',      name: 'Zomato',                      sector: 'Internet' },
+  { symbol: 'ZOMATO',      name: 'Zomato / Eternal Ltd',         sector: 'Internet' },
+  { symbol: 'ETERNAL',     name: 'Eternal Ltd (formerly Zomato)', sector: 'Internet' },
   { symbol: 'PAYTM',       name: 'Paytm (One97 Communications)', sector: 'Fintech' },
   { symbol: 'NYKAA',       name: 'Nykaa (FSN E-Commerce)',      sector: 'Retail' },
   { symbol: 'POLICYBZR',   name: 'PB Fintech (PolicyBazaar)',   sector: 'Fintech' },
