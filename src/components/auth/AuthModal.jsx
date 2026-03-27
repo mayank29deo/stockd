@@ -72,7 +72,7 @@ export const AuthModal = () => {
                     <p className="font-bold text-primary text-lg leading-tight">
                       Stock<span className="text-saffron-500">d</span>
                     </p>
-                    <p className="text-[10px] text-faded">Bazaar Ki Nabd, Aapke Haath Mein</p>
+                    <p className="text-[10px] text-faded">Bazaar Ki Nabz, Aapke Haath Mein</p>
                   </div>
                 </div>
 
