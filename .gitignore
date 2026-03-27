@@ -24,6 +24,10 @@ __pycache__/
 stocksage-api/__pycache__/
 stocksage-api/**/__pycache__/
 
+# SQLite snapshot database — auto-generated at runtime, never commit
+*.db
+*.sqlite
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
