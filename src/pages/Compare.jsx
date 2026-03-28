@@ -1,8 +1,8 @@
 import { useState } from 'react'
-import { motion } from 'framer-motion'
-import { GitCompare, X, Plus } from 'lucide-react'
+import { GitCompare, X } from 'lucide-react'
 import { STOCKS } from '../data/mock/stocks'
-import { VerdictBadge, ExchangeBadge } from '../components/ui/Badge'
+import { NSE_STOCKS } from '../data/nseStocks'
+import { VerdictBadge } from '../components/ui/Badge'
 import { formatINR, formatPercent, getChangeColor } from '../utils/formatters'
 import { clsx } from 'clsx'
 import {
@@ -10,7 +10,15 @@ import {
   ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend
 } from 'recharts'
 
-const FACTOR_LABELS = { technical: 'Technical', fundamental: 'Fundamental', sentiment: 'Sentiment', geopolitical: 'Geopolitical', insider: 'Insider' }
+const FACTOR_LABELS = { momentum: 'Momentum', technical: 'Technical', value: 'Value', quality: 'Quality', growth: 'Growth', risk: 'Risk' }
+
+// Merge mock + NSE for search — all ~200 NSE stocks searchable
+const ALL_SEARCHABLE = [
+  ...STOCKS,
+  ...NSE_STOCKS
+    .filter(n => !STOCKS.find(s => s.symbol === n.symbol))
+    .map(n => ({ id: n.symbol, symbol: n.symbol, name: n.name, sector: n.sector, color: '#FF6B35', logo: n.symbol.slice(0, 2) }))
+]
 const CHART_COLORS = ['#FF6B35', '#00C897', '#4E9AF1']
 
 const StockPicker = ({ selected, onSelect, onRemove, index }) => {
@@ -34,7 +42,7 @@ const StockPicker = ({ selected, onSelect, onRemove, index }) => {
     )
   }
 
-  const results = STOCKS.filter(s => s.symbol.toLowerCase().includes(query.toLowerCase()) || s.name.toLowerCase().includes(query.toLowerCase())).slice(0, 5)
+  const results = ALL_SEARCHABLE.filter(s => s.symbol.toLowerCase().includes(query.toLowerCase()) || s.name.toLowerCase().includes(query.toLowerCase())).slice(0, 6)
 
   return (
     <div className="relative">
@@ -83,7 +91,7 @@ export const Compare = () => {
     const base = activeStocks[0].priceHistory?.slice(-60) || []
     return base.map((d, i) => {
       const point = { date: d.date.slice(5) }
-      activeStocks.forEach((s, si) => {
+      activeStocks.forEach((s, _si) => {
         const hist = s.priceHistory?.slice(-60) || []
         const basePrice = hist[0]?.close || 1
         const curPrice = hist[i]?.close || basePrice
@@ -105,15 +113,15 @@ export const Compare = () => {
 
   const metrics = [
     { label: 'Price', fn: s => formatINR(s.price) },
-    { label: 'Day Change', fn: s => ({ value: `${s.changePercent >= 0 ? '+' : ''}${s.changePercent.toFixed(2)}%`, color: getChangeColor(s.changePercent) }) },
+    { label: 'Day Change', fn: s => ({ value: `${(s.changePercent ?? 0) >= 0 ? '+' : ''}${(s.changePercent ?? 0).toFixed(2)}%`, color: getChangeColor(s.changePercent) }) },
     { label: 'Market Cap', fn: s => s.marketCap },
     { label: 'Sector', fn: s => s.sector },
-    { label: 'P/E Ratio', fn: s => s.fundamentals.pe?.toFixed(1) },
-    { label: 'ROE', fn: s => `${s.fundamentals.roe?.toFixed(1)}%` },
-    { label: 'Debt/Eq.', fn: s => s.fundamentals.debtToEquity?.toFixed(2) },
-    { label: 'Profit Growth', fn: s => formatPercent(s.fundamentals.profitGrowthYoY) },
-    { label: 'RSI (14)', fn: s => s.technicals.rsi14 },
-    { label: 'Trend', fn: s => s.technicals.trend },
+    { label: 'P/E Ratio', fn: s => s.fundamentals?.pe?.toFixed(1) ?? '—' },
+    { label: 'ROE', fn: s => s.fundamentals?.roe != null ? `${s.fundamentals.roe.toFixed(1)}%` : '—' },
+    { label: 'Debt/Eq.', fn: s => s.fundamentals?.debtToEquity?.toFixed(2) ?? '—' },
+    { label: 'Profit Growth', fn: s => formatPercent(s.fundamentals?.profitGrowthYoY) },
+    { label: 'RSI (14)', fn: s => s.technicals?.rsi14 ?? '—' },
+    { label: 'Trend', fn: s => s.technicals?.trend ?? '—' },
     { label: 'Verdict', fn: s => s.verdict?.action, isVerdict: true },
     { label: 'Confidence', fn: s => `${s.verdict?.confidence}%` },
     { label: 'Target Price', fn: s => formatINR(s.verdict?.targetPrice) },

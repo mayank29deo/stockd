@@ -30,18 +30,18 @@ export const Screener = () => {
 
   const results = useMemo(() => {
     return (allStocks || []).filter(s => {
-      const f = s.fundamentals
-      const t = s.technicals
+      const f = s.fundamentals || {}
+      const t = s.technicals   || {}
       if (filters.verdict && s.verdict?.action !== filters.verdict) return false
-      if (filters.maxPE && f.pe > filters.maxPE) return false
-      if (filters.minROE && f.roe < filters.minROE) return false
-      if (filters.maxDebt && f.debtToEquity > filters.maxDebt) return false
-      if (filters.minProfitGrowth && f.profitGrowthYoY < filters.minProfitGrowth) return false
-      if (filters.minRevenueGrowth && f.revenueGrowthYoY < filters.minRevenueGrowth) return false
-      if (filters.minDivYield && f.dividendYield < filters.minDivYield) return false
-      if (filters.minChange && s.changePercent < filters.minChange) return false
-      if (filters.maxRSI && t.rsi14 > filters.maxRSI) return false
-      if (filters.minRSI && t.rsi14 < filters.minRSI) return false
+      if (filters.maxPE && (f.pe == null || f.pe > filters.maxPE)) return false
+      if (filters.minROE && (f.roe == null || f.roe < filters.minROE)) return false
+      if (filters.maxDebt && (f.debtToEquity == null || f.debtToEquity > filters.maxDebt)) return false
+      if (filters.minProfitGrowth && (f.profitGrowthYoY == null || f.profitGrowthYoY < filters.minProfitGrowth)) return false
+      if (filters.minRevenueGrowth && (f.revenueGrowthYoY == null || f.revenueGrowthYoY < filters.minRevenueGrowth)) return false
+      if (filters.minDivYield && (f.dividendYield == null || f.dividendYield < filters.minDivYield)) return false
+      if (filters.minChange && (s.changePercent == null || s.changePercent < filters.minChange)) return false
+      if (filters.maxRSI && (t.rsi14 == null || t.rsi14 > filters.maxRSI)) return false
+      if (filters.minRSI && (t.rsi14 == null || t.rsi14 < filters.minRSI)) return false
       if (filters.sector && filters.sector !== 'all' && s.sector !== filters.sector) return false
       if (filters.exchange && filters.exchange !== 'all' && s.exchange !== filters.exchange) return false
       return true
@@ -196,14 +196,14 @@ export const Screener = () => {
                         <td className="px-4 py-3"><ExchangeBadge exchange={stock.exchange} /></td>
                         <td className="px-4 py-3 text-xs text-secondary whitespace-nowrap">{stock.sector}</td>
                         <td className="px-4 py-3 text-xs font-mono font-semibold text-primary">{formatINR(stock.price)}</td>
-                        <td className={clsx('px-4 py-3 text-xs font-mono font-semibold', stock.changePercent >= 0 ? 'text-bull' : 'text-bear')}>
-                          {stock.changePercent >= 0 ? '+' : ''}{stock.changePercent.toFixed(2)}%
+                        <td className={clsx('px-4 py-3 text-xs font-mono font-semibold', (stock.changePercent ?? 0) >= 0 ? 'text-bull' : 'text-bear')}>
+                          {(stock.changePercent ?? 0) >= 0 ? '+' : ''}{(stock.changePercent ?? 0).toFixed(2)}%
                         </td>
-                        <td className="px-4 py-3 text-xs font-mono text-secondary">{stock.fundamentals.pe?.toFixed(1)}</td>
-                        <td className="px-4 py-3 text-xs font-mono text-secondary">{stock.fundamentals.roe?.toFixed(1)}%</td>
+                        <td className="px-4 py-3 text-xs font-mono text-secondary">{stock.fundamentals?.pe?.toFixed(1) ?? '—'}</td>
+                        <td className="px-4 py-3 text-xs font-mono text-secondary">{stock.fundamentals?.roe != null ? `${stock.fundamentals.roe.toFixed(1)}%` : '—'}</td>
                         <td className="px-4 py-3">
-                          <span className={clsx('text-xs font-mono font-semibold', stock.technicals.rsi14 > 70 ? 'text-bear' : stock.technicals.rsi14 < 30 ? 'text-bull' : 'text-secondary')}>
-                            {stock.technicals.rsi14}
+                          <span className={clsx('text-xs font-mono font-semibold', (stock.technicals?.rsi14 ?? 50) > 70 ? 'text-bear' : (stock.technicals?.rsi14 ?? 50) < 30 ? 'text-bull' : 'text-secondary')}>
+                            {stock.technicals?.rsi14 ?? '—'}
                           </span>
                         </td>
                         <td className="px-4 py-3">

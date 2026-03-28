@@ -3,16 +3,22 @@ import { Calendar as CalIcon, AlertCircle, TrendingUp, FileText, BarChart2 } fro
 import { clsx } from 'clsx'
 
 const EVENTS = [
-  { date: '2026-03-20', type: 'results', title: 'HDFC Bank Q4 Results', impact: 'high', sectors: ['Banking'] },
-  { date: '2026-03-21', type: 'expiry', title: 'March F&O Series Expiry', impact: 'high', sectors: ['All'] },
-  { date: '2026-03-21', type: 'results', title: 'Infosys Q4 Results', impact: 'high', sectors: ['IT'] },
-  { date: '2026-03-24', type: 'results', title: 'Reliance Q4 Results', impact: 'high', sectors: ['Energy'] },
-  { date: '2026-03-25', type: 'results', title: 'TCS Q4 Results', impact: 'high', sectors: ['IT'] },
-  { date: '2026-03-28', type: 'macro', title: 'India GDP Q3 Data Release', impact: 'medium', sectors: ['All'] },
-  { date: '2026-04-01', type: 'macro', title: 'RBI Credit Policy Minutes Released', impact: 'medium', sectors: ['Banking', 'NBFC'] },
-  { date: '2026-04-03', type: 'index', title: 'Nifty50 Quarterly Rebalancing', impact: 'medium', sectors: ['All'] },
-  { date: '2026-04-05', type: 'macro', title: 'India PMI Manufacturing Data', impact: 'low', sectors: ['Manufacturing'] },
-  { date: '2026-06-06', type: 'rbi', title: 'RBI MPC Policy Announcement', impact: 'high', sectors: ['Banking', 'NBFC', 'Realty'] },
+  { date: '2026-03-28', type: 'macro',   title: 'India GDP Q3 FY26 Data Release',         impact: 'high',   sectors: ['All'] },
+  { date: '2026-04-01', type: 'macro',   title: 'RBI Credit Policy Minutes Released',      impact: 'medium', sectors: ['Banking', 'NBFC'] },
+  { date: '2026-04-03', type: 'index',   title: 'Nifty50 Quarterly Rebalancing',           impact: 'medium', sectors: ['All'] },
+  { date: '2026-04-05', type: 'macro',   title: 'India PMI Manufacturing Data',            impact: 'low',    sectors: ['Manufacturing'] },
+  { date: '2026-04-10', type: 'results', title: 'TCS Q4 FY26 Results',                     impact: 'high',   sectors: ['IT'] },
+  { date: '2026-04-14', type: 'results', title: 'Infosys Q4 FY26 Results',                 impact: 'high',   sectors: ['IT'] },
+  { date: '2026-04-17', type: 'expiry',  title: 'April F&O Series Expiry',                 impact: 'high',   sectors: ['All'] },
+  { date: '2026-04-19', type: 'results', title: 'HDFC Bank Q4 FY26 Results',               impact: 'high',   sectors: ['Banking'] },
+  { date: '2026-04-22', type: 'results', title: 'Reliance Industries Q4 FY26 Results',     impact: 'high',   sectors: ['Energy'] },
+  { date: '2026-04-25', type: 'results', title: 'Wipro & HCLTech Q4 FY26 Results',         impact: 'medium', sectors: ['IT'] },
+  { date: '2026-05-07', type: 'rbi',     title: 'RBI MPC Policy Announcement',             impact: 'high',   sectors: ['Banking', 'NBFC', 'Realty'] },
+  { date: '2026-05-09', type: 'macro',   title: 'India CPI Inflation Data (April)',         impact: 'medium', sectors: ['All'] },
+  { date: '2026-05-15', type: 'expiry',  title: 'May F&O Series Expiry',                   impact: 'high',   sectors: ['All'] },
+  { date: '2026-05-20', type: 'results', title: 'ICICI Bank & Axis Bank Q4 Results',       impact: 'high',   sectors: ['Banking'] },
+  { date: '2026-06-05', type: 'macro',   title: 'India PMI Services Data (May)',            impact: 'low',    sectors: ['All'] },
+  { date: '2026-06-19', type: 'expiry',  title: 'June F&O Series Expiry',                  impact: 'high',   sectors: ['All'] },
 ]
 
 const TYPE_CONFIG = {
