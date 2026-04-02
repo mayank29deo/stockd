@@ -3,24 +3,28 @@ Nubra.io API Service
 ====================
 Provides live quotes, historical OHLCV, and current-price data via the Nubra REST API.
 
-Authentication:
-  - Uses TOTP-based login (fully automated, no manual OTP needed once TOTP is set up).
-  - Falls back gracefully if credentials are not configured.
-  - Session token auto-refreshes before expiry.
+Authentication (priority order):
+  1. NUBRA_SESSION_TOKEN in .env — manual token, works immediately, expires in ~24h.
+     Refresh by re-running the login curl commands and updating the env var.
+     Use this while waiting for TOTP to be enabled by Nubra support.
+
+  2. TOTP auto-login — fully automated, token refreshes every 23h with no human input.
+     Requires NUBRA_TOTP_SECRET (from POST /totp/generate-secret).
+     Contact support@nubra.io to enable TOTP if the endpoint returns 404.
 
 Fallback:
-  - available() returns False if credentials missing or auth fails.
-  - All callers check available() and fall through to NSE/RapidAPI/yfinance.
+  - available() returns False if no auth method works.
+  - All callers fall through to NSE/RapidAPI/yfinance silently.
 
 Price normalisation:
   - Nubra returns prices in PAISE (integer). We divide by 100 for rupees.
   - e.g. Nubra price 2575555 → ₹25755.55
 
-Required .env keys:
-  NUBRA_EMAIL         — registered email
-  NUBRA_PHONE         — registered phone (10 digits, no country code)
-  NUBRA_MPIN          — 4–6 digit MPIN
-  NUBRA_TOTP_SECRET   — base32 TOTP secret from /totp/generate-secret
+.env keys:
+  NUBRA_SESSION_TOKEN — paste session_token here for immediate use (manual refresh)
+  NUBRA_EMAIL         — registered email (needed for TOTP auto-login)
+  NUBRA_MPIN          — 4–6 digit MPIN (needed for TOTP auto-login)
+  NUBRA_TOTP_SECRET   — base32 secret from /totp/generate-secret (needed for TOTP)
   NUBRA_DEVICE_ID     — any stable string, e.g. "stockd-server-01"
 """
 
@@ -40,12 +44,13 @@ log = logging.getLogger("nubra")
 _BASE       = "https://api.nubra.io"
 _UAT_BASE   = "https://uatapi.nubra.io"
 
-NUBRA_EMAIL       = os.getenv("NUBRA_EMAIL", "")
-NUBRA_PHONE       = os.getenv("NUBRA_PHONE", "")
-NUBRA_MPIN        = os.getenv("NUBRA_MPIN", "")
-NUBRA_TOTP_SECRET = os.getenv("NUBRA_TOTP_SECRET", "")
-NUBRA_DEVICE_ID   = os.getenv("NUBRA_DEVICE_ID", "stockd-server-01")
-NUBRA_USE_UAT     = os.getenv("NUBRA_USE_UAT", "false").lower() == "true"
+NUBRA_SESSION_TOKEN = os.getenv("NUBRA_SESSION_TOKEN", "")  # manual fallback
+NUBRA_EMAIL         = os.getenv("NUBRA_EMAIL", "")
+NUBRA_PHONE         = os.getenv("NUBRA_PHONE", "")
+NUBRA_MPIN          = os.getenv("NUBRA_MPIN", "")
+NUBRA_TOTP_SECRET   = os.getenv("NUBRA_TOTP_SECRET", "")
+NUBRA_DEVICE_ID     = os.getenv("NUBRA_DEVICE_ID", "stockd-server-01")
+NUBRA_USE_UAT       = os.getenv("NUBRA_USE_UAT", "false").lower() == "true"
 
 _BASE_URL = _UAT_BASE if NUBRA_USE_UAT else _BASE
 
@@ -113,8 +118,6 @@ def available() -> bool:
     Returns True if Nubra is configured AND we have (or can obtain) a valid
     session token. False means callers should skip Nubra entirely.
     """
-    if not all([NUBRA_EMAIL, NUBRA_MPIN, NUBRA_TOTP_SECRET]):
-        return False
     if _auth_failed:
         return False
     return _ensure_token() is not None
@@ -122,30 +125,45 @@ def available() -> bool:
 
 def _ensure_token() -> str | None:
     """
-    Return valid session token, refreshing via TOTP if needed.
-    Thread-safe. Returns None if auth is not possible.
+    Return valid session token. Priority:
+      1. In-memory cached token (not expired)
+      2. NUBRA_SESSION_TOKEN from .env (manual, ~24h lifetime)
+      3. TOTP auto-login (fully automated, requires TOTP secret)
+    Thread-safe. Returns None if no auth method works.
     """
     global _session_token, _token_expiry, _auth_failed
 
     with _lock:
         now = time.time()
+
+        # 1. Valid in-memory token
         if _session_token and now < _token_expiry:
             return _session_token
 
-        # Token missing or expired — re-authenticate
-        try:
-            token = _totp_login()
-            if token:
-                _session_token = token
-                _token_expiry  = now + _TOKEN_TTL_SEC
-                _auth_failed   = False
-                log.info("[Nubra] Session token refreshed OK")
-                return _session_token
-        except Exception as e:
-            log.warning(f"[Nubra] Auth failed: {e}")
+        # 2. Manual session token from .env (use as-is, assume valid)
+        if NUBRA_SESSION_TOKEN:
+            _session_token = NUBRA_SESSION_TOKEN
+            # Nubra tokens last ~24h — assume it was just set, so give 20h
+            _token_expiry  = now + 20 * 3600
+            _auth_failed   = False
+            log.info("[Nubra] Using NUBRA_SESSION_TOKEN from .env")
+            return _session_token
 
-        _auth_failed   = True
-        _session_token = None
+        # 3. TOTP auto-login (only if TOTP is configured)
+        if all([NUBRA_EMAIL, NUBRA_MPIN, NUBRA_TOTP_SECRET]):
+            try:
+                token = _totp_login()
+                if token:
+                    _session_token = token
+                    _token_expiry  = now + _TOKEN_TTL_SEC
+                    _auth_failed   = False
+                    log.info("[Nubra] Session token refreshed via TOTP")
+                    return _session_token
+            except Exception as e:
+                log.warning(f"[Nubra] TOTP auth failed: {e}")
+                _auth_failed   = True
+                _session_token = None
+
         return None
 
 
@@ -486,8 +504,18 @@ def get_user_holdings(user_session_token: str) -> list:
 def health() -> dict:
     """Returns a health dict for the /health endpoint."""
     tok = _ensure_token()
+    if tok:
+        if NUBRA_SESSION_TOKEN and _session_token == NUBRA_SESSION_TOKEN:
+            auth_mode = "manual_session_token"
+        elif NUBRA_TOTP_SECRET:
+            auth_mode = "totp_auto"
+        else:
+            auth_mode = "unknown"
+    else:
+        auth_mode = "none"
     return {
-        "nubra_configured": bool(NUBRA_EMAIL and NUBRA_MPIN and NUBRA_TOTP_SECRET),
+        "nubra_configured": bool(NUBRA_SESSION_TOKEN or (NUBRA_EMAIL and NUBRA_MPIN and NUBRA_TOTP_SECRET)),
         "nubra_session":    "active" if tok else "failed",
+        "nubra_auth_mode":  auth_mode,
         "nubra_env":        "uat" if NUBRA_USE_UAT else "production",
     }
