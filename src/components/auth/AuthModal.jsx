@@ -14,9 +14,12 @@ const GoogleIcon = () => (
 )
 
 export const AuthModal = () => {
-  const { modalOpen, closeModal, signInWithGoogle, continueAsGuest } = useAuthStore()
+  const { modalOpen, paywallOpen, closeModal, signInWithGoogle, continueAsGuest } = useAuthStore()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+
+  const isPaywall = paywallOpen
+  const isOpen = modalOpen || paywallOpen
 
   const handleGoogle = async () => {
     setLoading(true)
@@ -35,15 +38,15 @@ export const AuthModal = () => {
 
   return (
     <AnimatePresence>
-      {modalOpen && (
+      {isOpen && (
         <>
-          {/* Backdrop */}
+          {/* Backdrop — non-clickable in paywall mode */}
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            onClick={closeModal}
-            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50"
+            onClick={isPaywall ? undefined : closeModal}
+            className="fixed inset-0 bg-black/75 backdrop-blur-md z-50"
           />
 
           {/* Modal */}
@@ -57,12 +60,14 @@ export const AuthModal = () => {
             <div className="bg-card border border-subtle rounded-2xl w-full max-w-sm shadow-2xl pointer-events-auto overflow-hidden">
               {/* Header gradient strip */}
               <div className="bg-gradient-to-r from-saffron-500/20 to-saffron-500/5 px-6 pt-6 pb-4 relative">
-                <button
-                  onClick={closeModal}
-                  className="absolute top-4 right-4 w-7 h-7 flex items-center justify-center rounded-lg hover:bg-white/10 text-faded hover:text-primary transition-colors"
-                >
-                  <X size={15} />
-                </button>
+                {!isPaywall && (
+                  <button
+                    onClick={closeModal}
+                    className="absolute top-4 right-4 w-7 h-7 flex items-center justify-center rounded-lg hover:bg-white/10 text-faded hover:text-primary transition-colors"
+                  >
+                    <X size={15} />
+                  </button>
+                )}
 
                 <div className="flex items-center gap-3 mb-3">
                   <div className="w-10 h-10 rounded-xl bg-gradient-saffron flex items-center justify-center shadow-glow-saffron">
@@ -77,7 +82,9 @@ export const AuthModal = () => {
                 </div>
 
                 <p className="text-sm text-secondary leading-snug">
-                  Sign in to save your portfolio, watchlists & get personalised AI verdicts.
+                  {isPaywall
+                    ? 'Your free preview has ended. Sign in with Google to continue — it\'s free.'
+                    : 'Sign in to save your portfolio, watchlists & get personalised AI verdicts.'}
                 </p>
               </div>
 
@@ -124,25 +131,35 @@ export const AuthModal = () => {
                   {loading ? 'Signing in...' : 'Continue with Google'}
                 </button>
 
-                {/* Divider */}
-                <div className="flex items-center gap-3">
-                  <div className="flex-1 h-px bg-subtle" />
-                  <span className="text-[10px] text-faded">or</span>
-                  <div className="flex-1 h-px bg-subtle" />
-                </div>
+                {!isPaywall && (
+                  <>
+                    {/* Divider */}
+                    <div className="flex items-center gap-3">
+                      <div className="flex-1 h-px bg-subtle" />
+                      <span className="text-[10px] text-faded">or</span>
+                      <div className="flex-1 h-px bg-subtle" />
+                    </div>
 
-                {/* Guest */}
-                <button
-                  onClick={handleGuest}
-                  className="w-full flex items-center justify-center gap-2 text-secondary hover:text-primary border border-subtle hover:border-muted bg-elevated hover:bg-card text-sm font-medium px-4 py-3 rounded-xl transition-all"
-                >
-                  Continue as Guest
-                  <ArrowRight size={14} />
-                </button>
+                    {/* Guest */}
+                    <button
+                      onClick={handleGuest}
+                      className="w-full flex items-center justify-center gap-2 text-secondary hover:text-primary border border-subtle hover:border-muted bg-elevated hover:bg-card text-sm font-medium px-4 py-3 rounded-xl transition-all"
+                    >
+                      Continue as Guest
+                      <ArrowRight size={14} />
+                    </button>
 
-                <p className="text-[10px] text-faded text-center leading-relaxed">
-                  Guest mode stores data locally only. Sign in to sync across devices.
-                </p>
+                    <p className="text-[10px] text-faded text-center leading-relaxed">
+                      Guest mode stores data locally only. Sign in to sync across devices.
+                    </p>
+                  </>
+                )}
+
+                {isPaywall && (
+                  <p className="text-[10px] text-faded text-center leading-relaxed">
+                    Free forever · No credit card required
+                  </p>
+                )}
               </div>
             </div>
           </motion.div>

@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { Upload, Plus, Trash2, TrendingUp, TrendingDown, ChevronDown, ChevronUp, AlertTriangle, CheckCircle } from 'lucide-react'
 import { STOCKS } from '../data/mock/stocks'
 import { usePortfolioStore, useUIStore } from '../store/index'
-import { parseCSV } from '../utils/parsers'
+import { parseFile } from '../utils/parsers'
 import { computePortfolioRecommendations } from '../utils/verdictEngine'
 import { formatINR, formatPercent, getChangeColor, formatCrore } from '../utils/formatters'
 import { VerdictBadge } from '../components/ui/Badge'
@@ -15,9 +15,11 @@ import {
 } from 'recharts'
 
 const BROKER_INFO = {
-  groww: { name: 'Groww', color: '#00D09C', instructions: 'Go to Groww → Stocks → Portfolio → Export (3-dot menu) → Download CSV' },
-  zerodha: { name: 'Zerodha', color: '#387ED1', instructions: 'Kite → Holdings → Download Holdings (CSV icon top-right)' },
-  other: { name: 'Generic CSV', color: '#9999B3', instructions: 'Columns: Symbol, Quantity, Avg Price, Current Price' },
+  groww: { name: 'Groww', color: '#00D09C', instructions: 'Groww → Stocks → Portfolio → Export (3-dot) → CSV/PDF' },
+  zerodha: { name: 'Zerodha', color: '#387ED1', instructions: 'Kite → Holdings → Download (CSV icon) · Console → Reports → Holdings (XML)' },
+  cdsl: { name: 'CDSL CAS', color: '#F59E0B', instructions: 'mycas.in → Download CAS → XML format (quarterly statement)' },
+  nsdl: { name: 'NSDL CAS', color: '#A78BFA', instructions: 'eservices.nsdl.com → CAS → Download XML statement' },
+  other: { name: 'Generic', color: '#9999B3', instructions: 'Any CSV/XML/PDF with: Symbol, Quantity, Avg Price columns' },
 }
 
 const COLORS = ['#FF6B35', '#00C897', '#4E9AF1', '#A78BFA', '#FFB020', '#F472B6', '#34D399', '#FB923C']
@@ -27,18 +29,28 @@ const ImportSection = ({ onImport }) => {
   const [error, setError] = useState('')
   const [preview, setPreview] = useState(null)
 
-  const processFile = (file) => {
-    const isCSV = file && (file.name.endsWith('.csv') || file.type === 'text/csv' || file.type === 'application/vnd.ms-excel' || file.type === '')
-    if (!file || !isCSV) { setError('Please upload a CSV file'); return }
-    const reader = new FileReader()
-    reader.onload = (e) => {
-      const result = parseCSV(e.target.result)
-      if (result.errors.length > 0) { setError(result.errors.join(', ')); return }
-      if (result.holdings.length === 0) { setError('No valid holdings found. Check CSV format.'); return }
-      setPreview(result)
-      setError('')
+  const [parsing, setParsing] = useState(false)
+
+  const processFile = async (file) => {
+    if (!file) return
+    const ext = file.name.split('.').pop().toLowerCase()
+    const allowed = ['csv', 'xml', 'pdf']
+    if (!allowed.includes(ext)) {
+      setError('Unsupported format. Please upload a CSV, XML, or PDF file.')
+      return
     }
-    reader.readAsText(file)
+    setParsing(true)
+    setError('')
+    try {
+      const result = await parseFile(file)
+      if (result.errors.length > 0) { setError(result.errors.join(', ')); return }
+      if (result.holdings.length === 0) { setError('No valid holdings found. Try a different format or broker export.'); return }
+      setPreview(result)
+    } catch (e) {
+      setError('Failed to read file: ' + e.message)
+    } finally {
+      setParsing(false)
+    }
   }
 
   const handleDrop = useCallback((e) => {
@@ -114,14 +126,14 @@ const ImportSection = ({ onImport }) => {
           'border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-all duration-200',
           dragging ? 'border-saffron-500 bg-saffron-500/5' : 'border-subtle hover:border-muted hover:bg-elevated/50'
         )}
-        onClick={() => document.getElementById('csv-upload').click()}
+        onClick={() => document.getElementById('portfolio-upload').click()}
       >
-        <Upload size={28} className={clsx('mx-auto mb-2', dragging ? 'text-saffron-500' : 'text-faded')} />
+        <Upload size={28} className={clsx('mx-auto mb-2', dragging ? 'text-saffron-500' : parsing ? 'text-caution animate-pulse' : 'text-faded')} />
         <p className="text-sm font-medium text-secondary">
-          {dragging ? 'Drop CSV here' : 'Drag & drop CSV or click to browse'}
+          {parsing ? 'Reading file…' : dragging ? 'Drop file here' : 'Drag & drop or click to browse'}
         </p>
-        <p className="text-xs text-faded mt-1">Supports Groww, Zerodha & generic CSV formats</p>
-        <input id="csv-upload" type="file" accept=".csv" className="hidden"
+        <p className="text-xs text-faded mt-1">CSV · XML · PDF &nbsp;·&nbsp; Groww, Zerodha, CDSL CAS, NSDL CAS</p>
+        <input id="portfolio-upload" type="file" accept=".csv,.xml,.pdf" className="hidden"
           onChange={e => processFile(e.target.files[0])} />
       </div>
 
@@ -286,7 +298,7 @@ export const Portfolio = () => {
         <div className="text-center py-16 text-secondary">
           <Upload size={40} className="mx-auto mb-3 text-faded" />
           <p className="font-semibold">No portfolio yet</p>
-          <p className="text-sm text-faded mt-1">Import your Groww or Zerodha CSV to get started</p>
+          <p className="text-sm text-faded mt-1">Import your Groww, Zerodha, CDSL CAS or any broker CSV / XML / PDF</p>
           <button onClick={() => setShowImport(true)} className="btn-primary mt-4 text-sm">
             Import Portfolio
           </button>

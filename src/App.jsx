@@ -46,7 +46,19 @@ const PageFallback = () => (
 
 export default function App() {
   const init = useAuthStore(s => s.init)
+  const isGuest = useAuthStore(s => s.isGuest)
+  const user = useAuthStore(s => s.user)
+  const triggerPaywall = useAuthStore(s => s.triggerPaywall)
+
   useEffect(() => { init() }, [])
+
+  // Show blocking sign-in paywall 50s after landing for guests
+  useEffect(() => {
+    const isRealUser = user && user.provider === 'google'
+    if (!isGuest || isRealUser) return
+    const t = setTimeout(() => triggerPaywall(), 50_000)
+    return () => clearTimeout(t)
+  }, [isGuest, user])
 
   return (
     <BrowserRouter>

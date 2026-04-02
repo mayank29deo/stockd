@@ -11,9 +11,11 @@ export const useAuthStore = create(persist(
     isGuest: false,      // true = browsing without account
     loading: true,       // waiting for Firebase auth state
     modalOpen: false,
+    paywallOpen: false,  // hard sign-in gate (no dismiss, no guest)
 
-    openModal:  () => set({ modalOpen: true }),
-    closeModal: () => set({ modalOpen: false }),
+    openModal:    () => set({ modalOpen: true }),
+    closeModal:   () => set({ modalOpen: false }),
+    triggerPaywall: () => set({ paywallOpen: true }),
 
     // Called once on app mount — syncs Firebase auth state
     init: () => {
@@ -31,6 +33,7 @@ export const useAuthStore = create(persist(
             isGuest: false,
             loading: false,
             modalOpen: false,
+            paywallOpen: false,
           })
         } else {
           // Only clear user if not in guest mode
