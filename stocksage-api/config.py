@@ -7,6 +7,17 @@ load_dotenv()
 NEWS_API_KEY       = os.getenv("NEWS_API_KEY", "")
 MARKETAUX_API_KEY  = os.getenv("MARKETAUX_API_KEY", "")
 
+# Nubra.io — primary market data source (live quotes + historical OHLCV)
+# Free during pilot. Requires TOTP setup for automated server re-auth.
+# Set up: generate TOTP secret via POST /totp/generate-secret, add to Google Authenticator
+# Docs: https://docs.nubra.io
+NUBRA_EMAIL       = os.getenv("NUBRA_EMAIL", "")
+NUBRA_PHONE       = os.getenv("NUBRA_PHONE", "")
+NUBRA_MPIN        = os.getenv("NUBRA_MPIN", "")
+NUBRA_TOTP_SECRET = os.getenv("NUBRA_TOTP_SECRET", "")
+NUBRA_DEVICE_ID   = os.getenv("NUBRA_DEVICE_ID", "stockd-server-01")
+NUBRA_USE_UAT     = os.getenv("NUBRA_USE_UAT", "false")
+
 # RapidAPI — Yahoo Finance proxy that works from cloud servers.
 # Same data as yfinance, no IP blocking. ~$10/month (Basic plan).
 # Sign up: https://rapidapi.com/apidojo/api/yahoo-finance1

@@ -1,0 +1,493 @@
+"""
+Nubra.io API Service
+====================
+Provides live quotes, historical OHLCV, and current-price data via the Nubra REST API.
+
+Authentication:
+  - Uses TOTP-based login (fully automated, no manual OTP needed once TOTP is set up).
+  - Falls back gracefully if credentials are not configured.
+  - Session token auto-refreshes before expiry.
+
+Fallback:
+  - available() returns False if credentials missing or auth fails.
+  - All callers check available() and fall through to NSE/RapidAPI/yfinance.
+
+Price normalisation:
+  - Nubra returns prices in PAISE (integer). We divide by 100 for rupees.
+  - e.g. Nubra price 2575555 → ₹25755.55
+
+Required .env keys:
+  NUBRA_EMAIL         — registered email
+  NUBRA_PHONE         — registered phone (10 digits, no country code)
+  NUBRA_MPIN          — 4–6 digit MPIN
+  NUBRA_TOTP_SECRET   — base32 TOTP secret from /totp/generate-secret
+  NUBRA_DEVICE_ID     — any stable string, e.g. "stockd-server-01"
+"""
+
+import os
+import time
+import threading
+import logging
+from datetime import datetime, timedelta, timezone
+from cachetools import TTLCache
+
+import requests
+
+log = logging.getLogger("nubra")
+
+# ── Config ────────────────────────────────────────────────────────────────────
+
+_BASE       = "https://api.nubra.io"
+_UAT_BASE   = "https://uatapi.nubra.io"
+
+NUBRA_EMAIL       = os.getenv("NUBRA_EMAIL", "")
+NUBRA_PHONE       = os.getenv("NUBRA_PHONE", "")
+NUBRA_MPIN        = os.getenv("NUBRA_MPIN", "")
+NUBRA_TOTP_SECRET = os.getenv("NUBRA_TOTP_SECRET", "")
+NUBRA_DEVICE_ID   = os.getenv("NUBRA_DEVICE_ID", "stockd-server-01")
+NUBRA_USE_UAT     = os.getenv("NUBRA_USE_UAT", "false").lower() == "true"
+
+_BASE_URL = _UAT_BASE if NUBRA_USE_UAT else _BASE
+
+# ── Session state (module-level, thread-safe) ─────────────────────────────────
+
+_lock          = threading.RLock()
+_session_token: str | None = None
+_token_expiry:  float      = 0.0   # unix timestamp when token expires
+_TOKEN_TTL_SEC             = 23 * 3600  # Nubra tokens last ~24h; refresh at 23h
+_auth_failed               = False      # latching flag to stop retry storms
+
+# Request-level cache for quotes (60s TTL)
+_quote_cache = TTLCache(maxsize=300, ttl=60)
+
+_http = requests.Session()
+_http.headers.update({
+    "Content-Type": "application/json",
+    "x-device-id":  NUBRA_DEVICE_ID,
+})
+
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+def _paise_to_inr(paise: int | float | None) -> float:
+    """Convert Nubra paise integer → INR rupees float."""
+    if paise is None:
+        return 0.0
+    return round(float(paise) / 100, 2)
+
+
+def _ns_to_date(ns: int) -> str:
+    """Convert nanosecond epoch timestamp → YYYY-MM-DD string (IST)."""
+    from datetime import timezone as tz
+    import pytz
+    ts   = ns / 1e9
+    dt   = datetime.fromtimestamp(ts, tz=pytz.timezone("Asia/Kolkata"))
+    return dt.strftime("%Y-%m-%d")
+
+
+def _period_to_dates(period: str) -> tuple[str, str]:
+    """
+    Convert period string ("1w", "1m", "3m", "1y", etc.) to
+    (startDate, endDate) in ISO 8601 UTC format for Nubra /charts/timeseries.
+    """
+    days_map = {
+        "1w":  7,
+        "1m":  30,
+        "3m":  90,
+        "6m":  180,
+        "1y":  365,
+        "3y":  1095,
+        "5y":  1825,
+    }
+    days  = days_map.get(period, 365)
+    now   = datetime.now(timezone.utc)
+    start = now - timedelta(days=days)
+    fmt   = "%Y-%m-%dT%H:%M:%S.000Z"
+    return start.strftime(fmt), now.strftime(fmt)
+
+
+# ── Authentication ─────────────────────────────────────────────────────────────
+
+def available() -> bool:
+    """
+    Returns True if Nubra is configured AND we have (or can obtain) a valid
+    session token. False means callers should skip Nubra entirely.
+    """
+    if not all([NUBRA_EMAIL, NUBRA_MPIN, NUBRA_TOTP_SECRET]):
+        return False
+    if _auth_failed:
+        return False
+    return _ensure_token() is not None
+
+
+def _ensure_token() -> str | None:
+    """
+    Return valid session token, refreshing via TOTP if needed.
+    Thread-safe. Returns None if auth is not possible.
+    """
+    global _session_token, _token_expiry, _auth_failed
+
+    with _lock:
+        now = time.time()
+        if _session_token and now < _token_expiry:
+            return _session_token
+
+        # Token missing or expired — re-authenticate
+        try:
+            token = _totp_login()
+            if token:
+                _session_token = token
+                _token_expiry  = now + _TOKEN_TTL_SEC
+                _auth_failed   = False
+                log.info("[Nubra] Session token refreshed OK")
+                return _session_token
+        except Exception as e:
+            log.warning(f"[Nubra] Auth failed: {e}")
+
+        _auth_failed   = True
+        _session_token = None
+        return None
+
+
+def _totp_login() -> str | None:
+    """
+    Fully automated TOTP-based login → returns session_token.
+    Requires NUBRA_TOTP_SECRET (set up once via /totp/generate-secret).
+    """
+    try:
+        import pyotp
+    except ImportError:
+        log.error("[Nubra] 'pyotp' not installed — run: pip install pyotp")
+        return None
+
+    totp      = pyotp.TOTP(NUBRA_TOTP_SECRET)
+    totp_code = int(totp.now())
+
+    # Step 1: TOTP login → auth_token
+    r = _http.post(
+        f"{_BASE_URL}/totp/login",
+        json={"email": NUBRA_EMAIL, "totp": totp_code},
+        timeout=15,
+    )
+    r.raise_for_status()
+    auth_token = r.json().get("auth_token")
+    if not auth_token:
+        raise ValueError(f"TOTP login failed: {r.json()}")
+
+    # Step 2: Verify MPIN → session_token
+    r2 = _http.post(
+        f"{_BASE_URL}/verifypin",
+        json={"pin": NUBRA_MPIN},
+        headers={"Authorization": f"Bearer {auth_token}",
+                 "x-device-id": NUBRA_DEVICE_ID},
+        timeout=15,
+    )
+    r2.raise_for_status()
+    session_token = r2.json().get("session_token")
+    if not session_token:
+        raise ValueError(f"verifypin failed: {r2.json()}")
+    return session_token
+
+
+def _auth_headers() -> dict:
+    token = _ensure_token()
+    if not token:
+        raise RuntimeError("Nubra: no valid session token")
+    return {
+        "Authorization": f"Bearer {token}",
+        "x-device-id":   NUBRA_DEVICE_ID,
+    }
+
+
+# ── Current Price (snapshot) ──────────────────────────────────────────────────
+
+def get_quote(symbol: str) -> dict | None:
+    """
+    Live price snapshot for a single NSE stock or index.
+    Returns normalised quote dict or None on failure.
+    """
+    sym = symbol.upper().strip()
+
+    with _lock:
+        if sym in _quote_cache:
+            return _quote_cache[sym]
+
+    try:
+        hdrs = _auth_headers()
+        r    = _http.get(
+            f"{_BASE_URL}/optionchains/{sym}/price",
+            headers=hdrs,
+            timeout=8,
+        )
+        r.raise_for_status()
+        d = r.json()
+
+        raw_price      = d.get("price", 0)
+        raw_prev_close = d.get("prev_close", 0)
+        change_pct     = float(d.get("change", 0) or 0)
+
+        price      = _paise_to_inr(raw_price)
+        prev_close = _paise_to_inr(raw_prev_close)
+        change     = round(price - prev_close, 2)
+
+        if price <= 0:
+            return None
+
+        result = {
+            "symbol":        sym,
+            "price":         price,
+            "previousClose": prev_close,
+            "change":        change,
+            "changePercent": round(change_pct, 4),
+            "exchange":      d.get("exchange", "NSE"),
+            "currency":      "INR",
+            "lastUpdated":   datetime.now(timezone.utc).isoformat(),
+            "source":        "nubra",
+        }
+
+        with _lock:
+            _quote_cache[sym] = result
+        return result
+
+    except Exception as e:
+        log.debug(f"[Nubra] get_quote({sym}) failed: {e}")
+        return None
+
+
+def get_quotes_bulk(symbols: list[str]) -> dict:
+    """
+    Fetch live quotes for multiple symbols in parallel.
+    Returns dict keyed by symbol.  Skips failed symbols silently.
+    """
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    results = {}
+    with ThreadPoolExecutor(max_workers=10) as ex:
+        futs = {ex.submit(get_quote, s): s for s in symbols}
+        for fut in as_completed(futs):
+            sym = futs[fut]
+            try:
+                q = fut.result()
+                if q:
+                    results[sym] = q
+            except Exception:
+                pass
+    return results
+
+
+def get_nifty50_quotes() -> dict:
+    """
+    Fetch all NIFTY50 stocks in parallel from Nubra.
+    Returns dict keyed by symbol — same schema as nse_service.get_nifty50_quotes().
+    """
+    from config import NIFTY50_SYMBOLS
+    return get_quotes_bulk(NIFTY50_SYMBOLS)
+
+
+# ── Historical OHLCV ──────────────────────────────────────────────────────────
+
+def get_history(symbol: str, period: str = "1y") -> list:
+    """
+    OHLCV history from Nubra /charts/timeseries.
+    Returns list of {date, open, high, low, close, volume} dicts.
+    Supports periods: 1w, 1m, 3m, 6m, 1y (intraday 3mo, daily 10y).
+    Returns [] on failure.
+    """
+    sym        = symbol.upper().strip()
+    start, end = _period_to_dates(period)
+
+    # Intraday (< 3mo) uses 1d candles; longer also uses 1d
+    fields = ["open", "high", "low", "close", "cumulative_volume"]
+
+    payload = {
+        "query": [{
+            "exchange":  "NSE",
+            "type":      "STOCK",
+            "values":    [sym],
+            "fields":    fields,
+            "startDate": start,
+            "endDate":   end,
+            "interval":  "1d",
+            "intraDay":  False,
+            "realTime":  False,
+        }]
+    }
+
+    try:
+        hdrs = _auth_headers()
+        r    = _http.post(
+            f"{_BASE_URL}/charts/timeseries",
+            json=payload,
+            headers=hdrs,
+            timeout=20,
+        )
+        r.raise_for_status()
+        return _parse_history_response(r.json(), sym)
+
+    except Exception as e:
+        log.debug(f"[Nubra] get_history({sym}, {period}) failed: {e}")
+        return []
+
+
+def get_index_history(index_id: str, period: str = "3m") -> list:
+    """
+    OHLCV history for an index (NIFTY50, BANKNIFTY, SENSEX, etc.).
+    Uses type="INDEX" in the timeseries query.
+    """
+    # Map our index IDs to Nubra index names
+    _index_map = {
+        "NIFTY50":   "NIFTY",
+        "BANKNIFTY": "BANKNIFTY",
+        "NIFTYIT":   "NIFTYIT",
+        "SENSEX":    "SENSEX",
+        "NIFTYMID":  "NIFTYMID50",
+    }
+    nubra_sym  = _index_map.get(index_id.upper(), index_id.upper())
+    start, end = _period_to_dates(period)
+
+    payload = {
+        "query": [{
+            "exchange":  "NSE",
+            "type":      "INDEX",
+            "values":    [nubra_sym],
+            "fields":    ["open", "high", "low", "close", "cumulative_volume"],
+            "startDate": start,
+            "endDate":   end,
+            "interval":  "1d",
+            "intraDay":  False,
+            "realTime":  False,
+        }]
+    }
+
+    try:
+        hdrs = _auth_headers()
+        r    = _http.post(
+            f"{_BASE_URL}/charts/timeseries",
+            json=payload,
+            headers=hdrs,
+            timeout=20,
+        )
+        r.raise_for_status()
+        return _parse_history_response(r.json(), nubra_sym)
+
+    except Exception as e:
+        log.debug(f"[Nubra] get_index_history({index_id}, {period}) failed: {e}")
+        return []
+
+
+def _parse_history_response(data: dict, symbol: str) -> list:
+    """
+    Normalise Nubra timeseries response → [{date, open, high, low, close, volume}]
+    Prices arrive as paise integers → divide by 100.
+    Timestamps arrive as nanoseconds.
+    """
+    try:
+        results = data.get("result", [])
+        if not results:
+            return []
+
+        sym_data = None
+        for entry in results:
+            for values_obj in entry.get("values", []):
+                if symbol in values_obj:
+                    sym_data = values_obj[symbol]
+                    break
+            if sym_data:
+                break
+
+        if not sym_data:
+            return []
+
+        def _ts_list(key):
+            return {item["ts"]: item["v"] for item in sym_data.get(key, [])}
+
+        closes  = _ts_list("close")
+        opens   = _ts_list("open")
+        highs   = _ts_list("high")
+        lows    = _ts_list("low")
+        volumes = _ts_list("cumulative_volume")
+
+        if not closes:
+            return []
+
+        candles = []
+        for ts in sorted(closes.keys()):
+            close = closes[ts]
+            if not close:
+                continue
+            candles.append({
+                "date":   _ns_to_date(ts),
+                "open":   _paise_to_inr(opens.get(ts, close)),
+                "high":   _paise_to_inr(highs.get(ts, close)),
+                "low":    _paise_to_inr(lows.get(ts, close)),
+                "close":  _paise_to_inr(close),
+                "volume": int(volumes.get(ts, 0) or 0),
+            })
+
+        return candles
+
+    except Exception as e:
+        log.debug(f"[Nubra] _parse_history_response failed: {e}")
+        return []
+
+
+# ── Holdings (live portfolio sync for Nubra users) ───────────────────────────
+
+def get_user_holdings(user_session_token: str) -> list:
+    """
+    Fetch live holdings for a Nubra-connected user.
+    Uses the user's own session_token (not the server token).
+    Returns list of normalised holding dicts.
+    """
+    try:
+        hdrs = {
+            "Authorization": f"Bearer {user_session_token}",
+            "x-device-id":   NUBRA_DEVICE_ID,
+        }
+        r = _http.get(f"{_BASE_URL}/portfolio/holdings", headers=hdrs, timeout=10)
+        r.raise_for_status()
+        data    = r.json()
+        holdings = data.get("portfolio", {}).get("holdings", [])
+        stats    = data.get("portfolio", {}).get("holding_stats", {})
+
+        normalised = []
+        for h in holdings:
+            avg_price   = _paise_to_inr(h.get("avg_price", 0))
+            ltp         = _paise_to_inr(h.get("ltp", 0))
+            qty         = int(h.get("qty", 0))
+            invested    = avg_price * qty
+            current_val = ltp * qty
+            pnl         = _paise_to_inr(h.get("net_pnl", 0)) or (current_val - invested)
+            pnl_pct     = float(h.get("net_pnl_chg", 0) or 0)
+
+            normalised.append({
+                "symbol":       h.get("symbol", "").upper(),
+                "name":         h.get("displayName", h.get("symbol", "")),
+                "quantity":     qty,
+                "avgBuyPrice":  avg_price,
+                "currentPrice": ltp,
+                "investedValue":invested,
+                "currentValue": current_val,
+                "pnl":          pnl,
+                "pnlPercent":   pnl_pct,
+                "exchange":     h.get("exchange", "NSE"),
+                "source":       "nubra_live",
+            })
+
+        return normalised
+
+    except Exception as e:
+        log.warning(f"[Nubra] get_user_holdings failed: {e}")
+        return []
+
+
+# ── Health check ──────────────────────────────────────────────────────────────
+
+def health() -> dict:
+    """Returns a health dict for the /health endpoint."""
+    tok = _ensure_token()
+    return {
+        "nubra_configured": bool(NUBRA_EMAIL and NUBRA_MPIN and NUBRA_TOTP_SECRET),
+        "nubra_session":    "active" if tok else "failed",
+        "nubra_env":        "uat" if NUBRA_USE_UAT else "production",
+    }

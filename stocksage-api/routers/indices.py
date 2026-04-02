@@ -3,6 +3,7 @@ from services.yahoo_service import get_index_quote, get_history as yf_get_histor
 from services.nse_service import get_nse_indices
 from services import snapshot_service as snap
 import services.eodhd_service as eodhd
+import services.nubra_service as nubra
 from config import INDICES
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -13,9 +14,16 @@ import services.rapidapi_yf_service as ryf
 
 def _fetch_history(yf_ticker: str, index_id: str, period: str = "3m") -> list:
     """
-    Fetch index history: EODHD → Twelve Data → yfinance → snapshot.
+    Fetch index history: Nubra → EODHD → RapidAPI YF → yfinance → snapshot.
     Each successful result is persisted to snapshot.
     """
+    # 0. Nubra index history (free, 10 years daily)
+    if nubra.available():
+        h = nubra.get_index_history(index_id, period)
+        if h:
+            snap.save_history_snapshot(index_id, period, h)
+            return h
+
     # 1. EODHD index tickers
     _eodhd_map = {
         "^NSEI":      "NSEI.INDX",

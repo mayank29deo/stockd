@@ -3,6 +3,7 @@ from services.yahoo_service import get_quote as yf_get_quote, get_quotes_bulk, g
 from services.nse_service import get_nifty50_quotes, get_stock_quote as nse_get_quote
 from services import snapshot_service as snap
 import services.rapidapi_yf_service as ryf
+import services.nubra_service as nubra
 from config import NIFTY50_SYMBOLS, SECTOR_MAP
 
 router = APIRouter(prefix="/api", tags=["quotes"])
@@ -17,10 +18,16 @@ def _market_open() -> bool:
 def _live_quote(symbol: str) -> dict | None:
     """
     Live quote for ANY NSE stock.
-    Chain: NSE batch (NIFTY50) → NSE quote-equity (any stock) → RapidAPI YF → yfinance
-    RapidAPI is tried before yfinance because yfinance is blocked on cloud IPs.
+    Chain: Nubra → NSE batch (NIFTY50) → NSE quote-equity → RapidAPI YF → yfinance
+    Nubra is tried first — sub-second REST, paise→INR normalised internally.
     """
-    # 1. NSE NIFTY50 batch (fastest, already cached in memory)
+    # 0. Nubra — fastest, real-time, free during pilot
+    if nubra.available():
+        q = nubra.get_quote(symbol)
+        if q and q.get("price", 0) > 0:
+            return {**q, "dataType": "live"}
+
+    # 1. NSE NIFTY50 batch (one call for all 50, cached 60s)
     nse_batch = get_nifty50_quotes()
     if symbol in nse_batch:
         return {**nse_batch[symbol], "dataType": "live"}
@@ -180,12 +187,20 @@ async def all_stocks(
     raw_quotes: list = []
 
     if market_is_open:
-        # Fetch all 50 in one NSE call
-        nse_quotes = get_nifty50_quotes()
-        if nse_quotes:
-            raw_quotes = [nse_quotes[s] for s in NIFTY50_SYMBOLS[:limit] if s in nse_quotes]
-        else:
-            # NSE API down — fall back to bulk yfinance
+        # 0. Nubra bulk (parallel REST, fastest)
+        if nubra.available():
+            nubra_quotes = nubra.get_nifty50_quotes()
+            if nubra_quotes:
+                raw_quotes = [nubra_quotes[s] for s in NIFTY50_SYMBOLS[:limit] if s in nubra_quotes]
+
+        # 1. NSE batch fallback — all 50 in one call
+        if not raw_quotes:
+            nse_q = get_nifty50_quotes()
+            if nse_q:
+                raw_quotes = [nse_q[s] for s in NIFTY50_SYMBOLS[:limit] if s in nse_q]
+
+        # 2. yfinance last resort
+        if not raw_quotes:
             raw_quotes = [q for q in get_quotes_bulk(NIFTY50_SYMBOLS[:limit])
                           if not ("error" in q and "price" not in q)]
     else:

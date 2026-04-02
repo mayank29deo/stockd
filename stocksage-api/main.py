@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from apscheduler.schedulers.background import BackgroundScheduler
-from routers import quotes, stock_detail, indices, sentiment, screener
+from routers import quotes, stock_detail, indices, sentiment, screener, ws as ws_router
 from services.snapshot_service import init_db, save_quotes_snapshot, save_indices_snapshot
 
 
@@ -136,10 +136,29 @@ def _prewarm_cache():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global _scheduler
+    import asyncio
 
     # 1. Ensure SQLite tables exist
     init_db()
     print("[DB] Snapshot DB initialised")
+
+    # 2. Nubra auth warm-up (non-blocking — logs result, doesn't block startup)
+    try:
+        import services.nubra_service as nubra
+        if nubra.available():
+            print("[Nubra] Authenticated OK — using Nubra as primary data source")
+        else:
+            missing = [k for k, v in {
+                "NUBRA_EMAIL": nubra.NUBRA_EMAIL,
+                "NUBRA_MPIN":  nubra.NUBRA_MPIN,
+                "NUBRA_TOTP_SECRET": nubra.NUBRA_TOTP_SECRET,
+            }.items() if not v]
+            if missing:
+                print(f"[Nubra] Not configured (missing: {', '.join(missing)}) — using NSE/RapidAPI fallbacks")
+            else:
+                print("[Nubra] Auth failed — check credentials. Falling back to NSE/RapidAPI")
+    except Exception as e:
+        print(f"[Nubra] Startup check error: {e}")
 
     # 2. Backfill snapshot if we just started after market close
     _startup_snapshot()
@@ -174,12 +193,25 @@ async def lifespan(app: FastAPI):
     #    On first run history is fetched on-demand and cached in SQLite.
     print("[Prewarm] Scheduled for 09:20 IST on trading days (quota preserved)")
 
+    # 5. Start WebSocket price poller as background asyncio task
+    poller_task = asyncio.create_task(ws_router.run_price_poller())
+    print("[WS] Price poller started — ws://host/ws/quotes")
+
     yield  # app is running
+
+    # Cleanup
+    poller_task.cancel()
+    try:
+        await poller_task
+    except asyncio.CancelledError:
+        pass
+    print("[WS] Price poller stopped")
 
     # Cleanup on shutdown
     if _scheduler and _scheduler.running:
         _scheduler.shutdown(wait=False)
         print("[Scheduler] Stopped")
+
 
 
 # ── FastAPI app ───────────────────────────────────────────────────────────────
@@ -204,6 +236,7 @@ app.include_router(stock_detail.router)
 app.include_router(indices.router)
 app.include_router(sentiment.router)
 app.include_router(screener.router)
+app.include_router(ws_router.router)
 
 
 @app.get("/")
@@ -231,7 +264,12 @@ async def root():
 @app.get("/health")
 async def health():
     from services.snapshot_service import get_last_snapshot_date
+    from services import nubra_service as nubra
+    from routers.ws import ws_status
+    ws_info = await ws_status()
     return {
-        "status": "ok",
+        "status":          "ok",
         "lastSnapshotDate": get_last_snapshot_date(),
+        **nubra.health(),
+        "ws_hub":          ws_info,
     }
