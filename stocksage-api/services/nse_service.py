@@ -128,7 +128,7 @@ def get_india_vix() -> float:
     return 15.0
 
 
-def get_stock_quote(symbol: str) -> dict | None:
+def get_stock_quote(symbol: str) -> "dict | None":
     """
     Live quote for ANY NSE-listed stock — not just NIFTY50.
     Works for PAYTM, ZOMATO, NYKAA, IRFC, and all ~2000 NSE-listed equities.

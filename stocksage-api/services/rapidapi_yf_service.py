@@ -79,7 +79,7 @@ def available() -> bool:
     return bool(RAPIDAPI_KEY)
 
 
-def _get(path: str, params: dict) -> dict | None:
+def _get(path: str, params: dict) -> "dict | None":
     """Generic GET with error handling."""
     try:
         resp = _SESSION.get(

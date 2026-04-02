@@ -38,3 +38,4 @@ stocksage-api/**/__pycache__/
 *.njsproj
 *.sln
 *.sw?
+stocksage-api/venv/

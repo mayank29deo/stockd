@@ -12,7 +12,7 @@ from services.snapshot_service import init_db, save_quotes_snapshot, save_indice
 
 
 IST = pytz.timezone("Asia/Kolkata")
-_scheduler: BackgroundScheduler | None = None
+_scheduler = None  # type: BackgroundScheduler
 
 
 # ── Daily snapshot job ────────────────────────────────────────────────────────

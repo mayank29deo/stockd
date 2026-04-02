@@ -15,7 +15,7 @@ def _market_open() -> bool:
     return get_market_status().get("isOpen", False)
 
 
-def _live_quote(symbol: str) -> dict | None:
+def _live_quote(symbol: str) -> "dict | None":
     """
     Live quote for ANY NSE stock.
     Chain: Nubra → NSE batch (NIFTY50) → NSE quote-equity → RapidAPI YF → yfinance

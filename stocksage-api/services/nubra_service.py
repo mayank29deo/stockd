@@ -57,7 +57,7 @@ _BASE_URL = _UAT_BASE if NUBRA_USE_UAT else _BASE
 # ── Session state (module-level, thread-safe) ─────────────────────────────────
 
 _lock          = threading.RLock()
-_session_token: str | None = None
+_session_token: "str | None" = None
 _token_expiry:  float      = 0.0   # unix timestamp when token expires
 _TOKEN_TTL_SEC             = 23 * 3600  # Nubra tokens last ~24h; refresh at 23h
 _auth_failed               = False      # latching flag to stop retry storms
@@ -74,7 +74,7 @@ _http.headers.update({
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
-def _paise_to_inr(paise: int | float | None) -> float:
+def _paise_to_inr(paise) -> float:
     """Convert Nubra paise integer → INR rupees float."""
     if paise is None:
         return 0.0
@@ -123,7 +123,7 @@ def available() -> bool:
     return _ensure_token() is not None
 
 
-def _ensure_token() -> str | None:
+def _ensure_token() -> "str | None":
     """
     Return valid session token. Priority:
       1. In-memory cached token (not expired)
@@ -167,7 +167,7 @@ def _ensure_token() -> str | None:
         return None
 
 
-def _totp_login() -> str | None:
+def _totp_login() -> "str | None":
     """
     Fully automated TOTP-based login → returns session_token.
     Requires NUBRA_TOTP_SECRET (set up once via /totp/generate-secret).
@@ -219,7 +219,7 @@ def _auth_headers() -> dict:
 
 # ── Current Price (snapshot) ──────────────────────────────────────────────────
 
-def get_quote(symbol: str) -> dict | None:
+def get_quote(symbol: str) -> "dict | None":
     """
     Live price snapshot for a single NSE stock or index.
     Returns normalised quote dict or None on failure.

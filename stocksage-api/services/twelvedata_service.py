@@ -63,7 +63,7 @@ def available() -> bool:
     return bool(TWELVEDATA_API_KEY)
 
 
-def _get(endpoint: str, params: dict) -> dict | list | None:
+def _get(endpoint: str, params: dict):
     """Generic GET with error handling."""
     try:
         resp = _SESSION.get(

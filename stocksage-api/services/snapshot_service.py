@@ -151,7 +151,7 @@ def _tag(data: dict, date_str: str) -> dict:
     return {**data, "dataType": "D1", "snapshotDate": date_str}
 
 
-def get_last_snapshot_date() -> str | None:
+def get_last_snapshot_date() -> "str | None":
     """Return the most recent snapshot date (YYYY-MM-DD) or None."""
     try:
         with _conn() as db:
@@ -164,7 +164,7 @@ def get_last_snapshot_date() -> str | None:
         return None
 
 
-def get_quote_snapshot(symbol: str) -> dict | None:
+def get_quote_snapshot(symbol: str) -> "dict | None":
     try:
         with _conn() as db:
             row = db.execute(
@@ -189,7 +189,7 @@ def get_all_quotes_snapshot() -> list:
         return []
 
 
-def get_index_snapshot(index_id: str) -> dict | None:
+def get_index_snapshot(index_id: str) -> "dict | None":
     try:
         with _conn() as db:
             row = db.execute(
@@ -228,7 +228,7 @@ def get_history_snapshot(symbol: str, period: str) -> list:
     return []
 
 
-def get_fundamentals_snapshot(symbol: str) -> dict | None:
+def get_fundamentals_snapshot(symbol: str) -> "dict | None":
     try:
         with _conn() as db:
             row = db.execute(
