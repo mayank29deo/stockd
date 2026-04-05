@@ -9,4 +9,4 @@ pytz==2024.1
 apscheduler==3.10.4
 pyotp==2.9.0
 websockets==13.1
-neo-api-client @ git+https://github.com/Kotak-Neo/kotak-neo-api.git#egg=neo_api_client
+# Kotak Neo uses direct REST calls — no SDK needed (SDK pins numpy==1.24.2, breaks Python 3.13)
