@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from apscheduler.schedulers.background import BackgroundScheduler
-from routers import quotes, stock_detail, indices, sentiment, screener, ws as ws_router
+from routers import quotes, stock_detail, indices, sentiment, screener, ws as ws_router, kotak as kotak_router
 from services.snapshot_service import init_db, save_quotes_snapshot, save_indices_snapshot
 
 
@@ -237,6 +237,7 @@ app.include_router(indices.router)
 app.include_router(sentiment.router)
 app.include_router(screener.router)
 app.include_router(ws_router.router)
+app.include_router(kotak_router.router)
 
 
 @app.get("/")
@@ -265,11 +266,13 @@ async def root():
 async def health():
     from services.snapshot_service import get_last_snapshot_date
     from services import nubra_service as nubra
+    from services import kotak_neo_service as kotak
     from routers.ws import ws_status
     ws_info = await ws_status()
     return {
         "status":          "ok",
         "lastSnapshotDate": get_last_snapshot_date(),
         **nubra.health(),
+        **kotak.health(),
         "ws_hub":          ws_info,
     }
