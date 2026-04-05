@@ -98,11 +98,26 @@ async def all_indices():
     if market_is_open:
         nse_data = get_nse_indices()
         if not nse_data:
+            # NSE unreachable — try Nubra live quotes for each index
             nse_data = {}
+            for idx_id in INDICES:
+                q = nubra.get_index_quote(idx_id) if nubra.available() else None
+                if q:
+                    nse_data[idx_id] = q
     else:
         # Use snapshot for index values
         snaps = snap.get_all_indices_snapshot()
-        nse_data = {s["id"]: s for s in snaps} if snaps else get_nse_indices()
+        if snaps:
+            nse_data = {s["id"]: s for s in snaps}
+        else:
+            # No snapshot — try Nubra for last known values
+            nse_data = {}
+            for idx_id in INDICES:
+                q = nubra.get_index_quote(idx_id) if nubra.available() else None
+                if q:
+                    nse_data[idx_id] = {**q, "dataType": "live"}
+            if not nse_data:
+                nse_data = get_nse_indices()
 
     # Fetch histories in parallel
     items = list(INDICES.items())

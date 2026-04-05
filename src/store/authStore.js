@@ -36,12 +36,13 @@ export const useAuthStore = create(persist(
             paywallOpen: false,
           })
         } else {
-          // Only clear user if not in guest mode
-          if (!get().isGuest) {
-            set({ user: null, loading: false })
-          } else {
-            set({ loading: false })
-          }
+          // No Firebase session → auto-enter guest mode so the paywall timer starts
+          set({
+            user:     { uid: 'guest', name: 'Guest User', email: null, photo: null, provider: 'guest' },
+            isGuest:  true,
+            loading:  false,
+            paywallOpen: false,
+          })
         }
       })
     },
@@ -74,7 +75,8 @@ export const useAuthStore = create(persist(
 
     signOutUser: async () => {
       await signOut(auth)
-      set({ user: null, isGuest: false })
+      // onAuthStateChanged will fire and auto-set guest mode
+      set({ user: null, isGuest: false, paywallOpen: false })
     },
 
     isAuthenticated: () => {

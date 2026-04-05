@@ -302,6 +302,79 @@ def get_nifty50_quotes() -> dict:
     return get_quotes_bulk(NIFTY50_SYMBOLS)
 
 
+# ── Index live quote ─────────────────────────────────────────────────────────
+
+_INDEX_MAP = {
+    "NIFTY50":   ("NIFTY",      "NIFTY 50"),
+    "BANKNIFTY": ("BANKNIFTY",  "NIFTY BANK"),
+    "NIFTYIT":   ("NIFTYIT",    "NIFTY IT"),
+    "SENSEX":    ("SENSEX",     "SENSEX"),
+    "NIFTYMID":  ("NIFTYMID50", "NIFTY MIDCAP 50"),
+}
+
+
+def get_index_quote(index_id: str) -> "dict | None":
+    """
+    Live price for an index via Nubra /optionchains/{sym}/price.
+    Returns same schema as nse_service.get_nse_indices() values
+    (id, name, value, change, changePercent, …).
+    """
+    mapping = _INDEX_MAP.get(index_id.upper())
+    if not mapping:
+        return None
+    nubra_sym, display_name = mapping
+
+    with _lock:
+        cache_key = f"_idx_{index_id}"
+        if cache_key in _quote_cache:
+            return _quote_cache[cache_key]
+
+    try:
+        hdrs = _auth_headers()
+        r    = _http.get(
+            f"{_BASE_URL}/optionchains/{nubra_sym}/price",
+            headers=hdrs,
+            timeout=8,
+        )
+        r.raise_for_status()
+        d = r.json()
+
+        raw_price      = d.get("price", 0)
+        raw_prev_close = d.get("prev_close", 0)
+        change_pct     = float(d.get("change", 0) or 0)
+
+        value      = _paise_to_inr(raw_price)
+        prev_close = _paise_to_inr(raw_prev_close)
+        change     = round(value - prev_close, 2)
+
+        if value <= 0:
+            return None
+
+        result = {
+            "id":            index_id.upper(),
+            "name":          display_name,
+            "exchange":      "NSE",
+            "value":         value,
+            "change":        change,
+            "changePercent": round(change_pct, 4),
+            "open":          value,
+            "high":          value,
+            "low":           value,
+            "previousClose": prev_close,
+            "lastUpdated":   datetime.now(timezone.utc).isoformat(),
+            "source":        "nubra",
+            "dataType":      "live",
+        }
+
+        with _lock:
+            _quote_cache[cache_key] = result
+        return result
+
+    except Exception as e:
+        log.debug(f"[Nubra] get_index_quote({index_id}) failed: {e}")
+        return None
+
+
 # ── Historical OHLCV ──────────────────────────────────────────────────────────
 
 def get_history(symbol: str, period: str = "1y") -> list:
