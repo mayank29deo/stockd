@@ -3,6 +3,8 @@ import { Suspense, lazy, useEffect, Component } from 'react'
 import { RootLayout } from './components/layout/RootLayout'
 import { Dashboard } from './pages/Dashboard'
 import { AuthModal } from './components/auth/AuthModal'
+import { PlanModal } from './components/auth/PlanModal'
+import { SubscriptionModal } from './components/auth/SubscriptionModal'
 import { useAuthStore } from './store/authStore'
 
 class ErrorBoundary extends Component {
@@ -34,6 +36,7 @@ const Screener = lazy(() => import('./pages/Screener').then(m => ({ default: m.S
 const Compare = lazy(() => import('./pages/Compare').then(m => ({ default: m.Compare })))
 const Calendar = lazy(() => import('./pages/Calendar').then(m => ({ default: m.Calendar })))
 const Settings = lazy(() => import('./pages/Settings').then(m => ({ default: m.Settings })))
+const PaymentSuccess = lazy(() => import('./pages/PaymentSuccess').then(m => ({ default: m.PaymentSuccess })))
 
 const PageFallback = () => (
   <div className="flex items-center justify-center min-h-[60vh]">
@@ -45,10 +48,14 @@ const PageFallback = () => (
 )
 
 export default function App() {
-  const init = useAuthStore(s => s.init)
-  const isGuest = useAuthStore(s => s.isGuest)
-  const user = useAuthStore(s => s.user)
-  const triggerPaywall = useAuthStore(s => s.triggerPaywall)
+  const init               = useAuthStore(s => s.init)
+  const isGuest            = useAuthStore(s => s.isGuest)
+  const user               = useAuthStore(s => s.user)
+  const triggerPaywall     = useAuthStore(s => s.triggerPaywall)
+  const isTrialActive      = useAuthStore(s => s.isTrialActive)
+  const triggerTrialExpired = useAuthStore(s => s.triggerTrialExpired)
+  const plan               = useAuthStore(s => s.plan)
+  const trialExpiredOpen   = useAuthStore(s => s.trialExpiredOpen)
 
   useEffect(() => { init() }, [])
 
@@ -60,9 +67,22 @@ export default function App() {
     return () => clearTimeout(t)
   }, [isGuest, user])
 
+  // Watch trial expiry — check every minute
+  useEffect(() => {
+    if (plan !== 'trial' || trialExpiredOpen) return
+    const check = () => {
+      if (!isTrialActive()) triggerTrialExpired()
+    }
+    check() // immediate check on mount
+    const interval = setInterval(check, 60_000)
+    return () => clearInterval(interval)
+  }, [plan, trialExpiredOpen])
+
   return (
     <BrowserRouter>
       <AuthModal />
+      <PlanModal />
+      <SubscriptionModal />
       <Routes>
         <Route element={<RootLayout />}>
           <Route index element={<Dashboard />} />
@@ -75,6 +95,7 @@ export default function App() {
           <Route path="compare" element={<ErrorBoundary><Suspense fallback={<PageFallback />}><Compare /></Suspense></ErrorBoundary>} />
           <Route path="calendar" element={<ErrorBoundary><Suspense fallback={<PageFallback />}><Calendar /></Suspense></ErrorBoundary>} />
           <Route path="settings" element={<ErrorBoundary><Suspense fallback={<PageFallback />}><Settings /></Suspense></ErrorBoundary>} />
+          <Route path="payment/success" element={<ErrorBoundary><Suspense fallback={<PageFallback />}><PaymentSuccess /></Suspense></ErrorBoundary>} />
         </Route>
       </Routes>
     </BrowserRouter>

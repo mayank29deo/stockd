@@ -5,42 +5,90 @@ import {
 } from 'firebase/auth'
 import { auth, googleProvider, firebaseReady } from '../firebase'
 
+const TRIAL_DAYS = 7
+
 export const useAuthStore = create(persist(
   (set, get) => ({
-    user: null,          // Firebase user object (null = not signed in)
-    isGuest: false,      // true = browsing without account
-    loading: true,       // waiting for Firebase auth state
+    user: null,
+    isGuest: false,
+    loading: true,
     modalOpen: false,
-    paywallOpen: false,  // hard sign-in gate (no dismiss, no guest)
+    paywallOpen: false,       // sign-in gate (50s guest timer)
+    planModalOpen: false,     // choose trial vs pro (after Google sign-in, no plan yet)
+    trialExpiredOpen: false,  // blocking paywall when trial ends
+
+    // Plan state — persisted
+    plan: null,               // null | 'trial' | 'pro'
+    trialStartDate: null,     // ISO string
 
     openModal:    () => set({ modalOpen: true }),
     closeModal:   () => set({ modalOpen: false }),
     triggerPaywall: () => set({ paywallOpen: true }),
 
-    // Called once on app mount — syncs Firebase auth state
+    // ── Plan helpers ──────────────────────────────────────────
+    isTrialActive: () => {
+      const { plan, trialStartDate } = get()
+      if (plan !== 'trial' || !trialStartDate) return false
+      const elapsed = Date.now() - new Date(trialStartDate).getTime()
+      return elapsed < TRIAL_DAYS * 24 * 60 * 60 * 1000
+    },
+
+    trialDaysLeft: () => {
+      const { plan, trialStartDate } = get()
+      if (plan !== 'trial' || !trialStartDate) return 0
+      const elapsed = Date.now() - new Date(trialStartDate).getTime()
+      const left = TRIAL_DAYS - Math.floor(elapsed / (24 * 60 * 60 * 1000))
+      return Math.max(0, left)
+    },
+
+    hasAccess: () => {
+      const { plan } = get()
+      if (plan === 'pro') return true
+      if (plan === 'trial') return get().isTrialActive()
+      return false
+    },
+
+    startTrial: () => set({
+      plan: 'trial',
+      trialStartDate: new Date().toISOString(),
+      planModalOpen: false,
+      trialExpiredOpen: false,
+    }),
+
+    activatePro: () => set({
+      plan: 'pro',
+      planModalOpen: false,
+      trialExpiredOpen: false,
+    }),
+
+    triggerTrialExpired: () => set({ trialExpiredOpen: true }),
+
+    // ── Auth ──────────────────────────────────────────────────
     init: () => {
       if (!firebaseReady) { set({ loading: false }); return }
       onAuthStateChanged(auth, (firebaseUser) => {
         if (firebaseUser) {
+          const currentPlan = get().plan
           set({
             user: {
-              uid:         firebaseUser.uid,
-              name:        firebaseUser.displayName,
-              email:       firebaseUser.email,
-              photo:       firebaseUser.photoURL,
-              provider:    'google',
+              uid:      firebaseUser.uid,
+              name:     firebaseUser.displayName,
+              email:    firebaseUser.email,
+              photo:    firebaseUser.photoURL,
+              provider: 'google',
             },
-            isGuest: false,
-            loading: false,
-            modalOpen: false,
-            paywallOpen: false,
+            isGuest:      false,
+            loading:      false,
+            modalOpen:    false,
+            paywallOpen:  false,
+            // Show plan picker only if user has never chosen a plan
+            planModalOpen: !currentPlan,
           })
         } else {
-          // No Firebase session → auto-enter guest mode so the paywall timer starts
           set({
-            user:     { uid: 'guest', name: 'Guest User', email: null, photo: null, provider: 'guest' },
-            isGuest:  true,
-            loading:  false,
+            user:        { uid: 'guest', name: 'Guest User', email: null, photo: null, provider: 'guest' },
+            isGuest:     true,
+            loading:     false,
             paywallOpen: false,
           })
         }
@@ -51,7 +99,6 @@ export const useAuthStore = create(persist(
       if (!firebaseReady) throw new Error('Firebase not configured. Add credentials to .env')
       try {
         await signInWithPopup(auth, googleProvider)
-        // onAuthStateChanged handles the state update
       } catch (err) {
         console.error('Google sign-in failed:', err.message)
         throw err
@@ -61,13 +108,7 @@ export const useAuthStore = create(persist(
     continueAsGuest: () => {
       set({
         isGuest: true,
-        user: {
-          uid:      'guest',
-          name:     'Guest User',
-          email:    null,
-          photo:    null,
-          provider: 'guest',
-        },
+        user: { uid: 'guest', name: 'Guest User', email: null, photo: null, provider: 'guest' },
         loading: false,
         modalOpen: false,
       })
@@ -75,17 +116,17 @@ export const useAuthStore = create(persist(
 
     signOutUser: async () => {
       await signOut(auth)
-      // onAuthStateChanged will fire and auto-set guest mode
       set({ user: null, isGuest: false, paywallOpen: false })
     },
 
-    isAuthenticated: () => {
-      const { user } = get()
-      return !!user
-    },
+    isAuthenticated: () => !!get().user,
   }),
   {
     name: 'stockd-auth',
-    partialize: (state) => ({ isGuest: state.isGuest }),  // only persist guest flag
+    partialize: (state) => ({
+      isGuest:       state.isGuest,
+      plan:          state.plan,
+      trialStartDate: state.trialStartDate,
+    }),
   }
 ))

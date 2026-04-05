@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from apscheduler.schedulers.background import BackgroundScheduler
-from routers import quotes, stock_detail, indices, sentiment, screener, ws as ws_router, kotak as kotak_router
+from routers import quotes, stock_detail, indices, sentiment, screener, ws as ws_router, kotak as kotak_router, payment as payment_router
 from services.snapshot_service import init_db, save_quotes_snapshot, save_indices_snapshot
 
 
@@ -246,6 +246,7 @@ app.include_router(sentiment.router)
 app.include_router(screener.router)
 app.include_router(ws_router.router)
 app.include_router(kotak_router.router)
+app.include_router(payment_router.router)
 
 
 @app.get("/")

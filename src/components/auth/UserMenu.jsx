@@ -1,12 +1,12 @@
 import { useState, useRef, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { LogOut, User, Settings, ChevronDown } from 'lucide-react'
+import { LogOut, User, Settings, ChevronDown, Star, Clock } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { useAuthStore } from '../../store/authStore'
 import { clsx } from 'clsx'
 
 export const UserMenu = () => {
-  const { user, isGuest, openModal, signOutUser } = useAuthStore()
+  const { user, isGuest, openModal, signOutUser, plan, trialDaysLeft, triggerTrialExpired } = useAuthStore()
   const [open, setOpen] = useState(false)
   const ref = useRef(null)
 
@@ -66,12 +66,24 @@ export const UserMenu = () => {
             <div className="px-4 py-3 border-b border-subtle">
               <p className="text-sm font-semibold text-primary truncate">{user.name}</p>
               {user.email && <p className="text-[10px] text-faded truncate mt-0.5">{user.email}</p>}
-              <span className={clsx(
-                'inline-flex items-center text-[9px] font-semibold px-1.5 py-0.5 rounded-full mt-1.5',
-                isGuest ? 'bg-muted text-secondary' : 'bg-bull/10 text-bull'
-              )}>
-                {isGuest ? 'Guest Mode' : '● Google Account'}
-              </span>
+              <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+                <span className={clsx(
+                  'inline-flex items-center text-[9px] font-semibold px-1.5 py-0.5 rounded-full',
+                  isGuest ? 'bg-muted text-secondary' : 'bg-bull/10 text-bull'
+                )}>
+                  {isGuest ? 'Guest Mode' : '● Google Account'}
+                </span>
+                {plan === 'pro' && (
+                  <span className="inline-flex items-center gap-0.5 text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-saffron-500 text-white">
+                    <Star size={8} /> PRO
+                  </span>
+                )}
+                {plan === 'trial' && (
+                  <span className="inline-flex items-center gap-0.5 text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-saffron-500/15 text-saffron-500">
+                    <Clock size={8} /> {trialDaysLeft()}d trial
+                  </span>
+                )}
+              </div>
             </div>
 
             {/* Menu items */}
@@ -82,6 +94,14 @@ export const UserMenu = () => {
                   className="w-full flex items-center gap-2.5 px-4 py-2 text-xs text-saffron-500 hover:bg-card transition-colors font-semibold"
                 >
                   Sign in with Google to sync data →
+                </button>
+              )}
+              {plan === 'trial' && !isGuest && (
+                <button
+                  onClick={() => { setOpen(false); triggerTrialExpired() }}
+                  className="w-full flex items-center gap-2.5 px-4 py-2 text-xs text-saffron-500 hover:bg-card transition-colors font-semibold"
+                >
+                  <Star size={11} /> Upgrade to Pro — ₹99/mo
                 </button>
               )}
 
