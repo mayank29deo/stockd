@@ -14,6 +14,7 @@ Endpoints:
 """
 
 import os
+import config  # noqa: F401 — ensures load_dotenv() runs before os.getenv calls
 import requests as req_lib
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import RedirectResponse
@@ -29,7 +30,7 @@ FRONTEND_URL         = os.getenv("FRONTEND_URL", "https://www.stockd.co.in")
 _BASE = (
     "https://test.instamojo.com/api/1.1"
     if INSTAMOJO_ENV == "test"
-    else "https://api.instamojo.com/api/1.1"
+    else "https://www.instamojo.com/api/1.1"
 )
 
 
