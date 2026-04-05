@@ -40,6 +40,12 @@ async def kotak_status():
     return kotak.health()
 
 
+@router.post("/auth/logout")
+async def kotak_auth_logout():
+    """Clear Kotak session and remove persisted tokens from .env."""
+    return kotak.logout()
+
+
 @router.get("/holdings")
 async def kotak_holdings():
     """

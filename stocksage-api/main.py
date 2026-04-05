@@ -142,7 +142,15 @@ async def lifespan(app: FastAPI):
     init_db()
     print("[DB] Snapshot DB initialised")
 
-    # 2. Nubra auth warm-up (non-blocking — logs result, doesn't block startup)
+    # 2. Kotak Neo — restore session from persisted tokens (no OTP if tokens exist)
+    try:
+        import services.kotak_neo_service as kotak
+        if kotak._configured():
+            kotak.startup_restore()
+    except Exception as e:
+        print(f"[KotakNeo] Startup restore error: {e}")
+
+    # 2b. Nubra auth warm-up (non-blocking — logs result, doesn't block startup)
     try:
         import services.nubra_service as nubra
         if nubra.available():
