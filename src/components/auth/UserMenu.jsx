@@ -6,7 +6,7 @@ import { useAuthStore } from '../../store/authStore'
 import { clsx } from 'clsx'
 
 export const UserMenu = () => {
-  const { user, isGuest, openModal, signOutUser, plan, trialDaysLeft, triggerTrialExpired } = useAuthStore()
+  const { user, isGuest, openModal, signOutUser, plan, trialDaysLeft, openUpgradeModal } = useAuthStore()
   const [open, setOpen] = useState(false)
   const ref = useRef(null)
 
@@ -98,7 +98,7 @@ export const UserMenu = () => {
               )}
               {plan === 'trial' && !isGuest && (
                 <button
-                  onClick={() => { setOpen(false); triggerTrialExpired() }}
+                  onClick={() => { setOpen(false); openUpgradeModal() }}
                   className="w-full flex items-center gap-2.5 px-4 py-2 text-xs text-saffron-500 hover:bg-card transition-colors font-semibold"
                 >
                   <Star size={11} /> Upgrade to Pro — ₹99/mo

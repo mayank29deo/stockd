@@ -123,9 +123,11 @@ const SearchDropdown = ({ query, onClose }) => {
 }
 
 const UpgradePill = () => {
-  const plan          = useAuthStore(s => s.plan)
-  const trialDaysLeft = useAuthStore(s => s.trialDaysLeft)
-  const isGuest       = useAuthStore(s => s.isGuest)
+  const plan             = useAuthStore(s => s.plan)
+  const trialDaysLeft    = useAuthStore(s => s.trialDaysLeft)
+  const isGuest          = useAuthStore(s => s.isGuest)
+  const isTrialActive    = useAuthStore(s => s.isTrialActive)
+  const openUpgradeModal = useAuthStore(s => s.openUpgradeModal)
   const triggerTrialExpired = useAuthStore(s => s.triggerTrialExpired)
 
   if (isGuest || plan !== 'trial') return null
@@ -133,9 +135,12 @@ const UpgradePill = () => {
   const days = trialDaysLeft()
   const urgent = days <= 2
 
+  // During active trial → dismissable preview; expired → blocking gate
+  const handleClick = () => isTrialActive() ? openUpgradeModal() : triggerTrialExpired()
+
   return (
     <button
-      onClick={triggerTrialExpired}
+      onClick={handleClick}
       className={clsx(
         'flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-xs font-semibold transition-all hover:scale-105',
         urgent

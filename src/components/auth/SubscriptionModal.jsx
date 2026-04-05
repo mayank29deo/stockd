@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { TrendingUp, Star, CheckCircle2, Lock, ExternalLink } from 'lucide-react'
+import { TrendingUp, Star, CheckCircle2, Lock, ExternalLink, X } from 'lucide-react'
 import { useAuthStore } from '../../store/authStore'
 
 const FEATURES = [
@@ -15,9 +15,13 @@ const FEATURES = [
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
 export const SubscriptionModal = () => {
-  const { trialExpiredOpen, user } = useAuthStore()
+  const { trialExpiredOpen, upgradeModalOpen, closeUpgradeModal, user, trialDaysLeft } = useAuthStore()
   const [paying, setPaying] = useState(false)
   const [error, setError]   = useState('')
+
+  const isOpen       = trialExpiredOpen || upgradeModalOpen
+  const isDismissable = upgradeModalOpen && !trialExpiredOpen
+  const days         = trialDaysLeft()
 
   const handlePro = async () => {
     setPaying(true)
@@ -44,7 +48,7 @@ export const SubscriptionModal = () => {
     }
   }
 
-  if (!trialExpiredOpen) return null
+  if (!isOpen) return null
 
   return (
     <AnimatePresence>
@@ -52,6 +56,7 @@ export const SubscriptionModal = () => {
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
+        onClick={isDismissable ? closeUpgradeModal : undefined}
         className="fixed inset-0 bg-black/85 backdrop-blur-md z-50"
       />
 
@@ -65,13 +70,25 @@ export const SubscriptionModal = () => {
         <div className="bg-card border border-subtle rounded-2xl w-full max-w-sm shadow-2xl pointer-events-auto overflow-hidden">
 
           {/* Header */}
-          <div className="bg-gradient-to-r from-saffron-500/20 to-saffron-500/5 px-6 pt-6 pb-5 text-center">
+          <div className="bg-gradient-to-r from-saffron-500/20 to-saffron-500/5 px-6 pt-6 pb-5 text-center relative">
+            {isDismissable && (
+              <button
+                onClick={closeUpgradeModal}
+                className="absolute top-4 right-4 w-7 h-7 flex items-center justify-center rounded-lg hover:bg-white/10 text-faded hover:text-primary transition-colors"
+              >
+                <X size={15} />
+              </button>
+            )}
             <div className="w-12 h-12 rounded-2xl bg-gradient-saffron flex items-center justify-center shadow-glow-saffron mx-auto mb-3">
-              <Lock size={20} className="text-white" />
+              {isDismissable ? <Star size={20} className="text-white" /> : <Lock size={20} className="text-white" />}
             </div>
-            <p className="font-bold text-primary text-lg leading-tight mb-1">Your free trial has ended</p>
+            <p className="font-bold text-primary text-lg leading-tight mb-1">
+              {isDismissable ? `${days} day${days !== 1 ? 's' : ''} left in your trial` : 'Your free trial has ended'}
+            </p>
             <p className="text-xs text-secondary">
-              Subscribe to keep using Stockd Pro — your data is saved and waiting.
+              {isDismissable
+                ? 'Upgrade to Pro and keep full access after your trial ends.'
+                : 'Subscribe to keep using Stockd Pro — your data is saved and waiting.'}
             </p>
           </div>
 

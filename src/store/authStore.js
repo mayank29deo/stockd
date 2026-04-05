@@ -15,7 +15,8 @@ export const useAuthStore = create(persist(
     modalOpen: false,
     paywallOpen: false,       // sign-in gate (50s guest timer)
     planModalOpen: false,     // choose trial vs pro (after Google sign-in, no plan yet)
-    trialExpiredOpen: false,  // blocking paywall when trial ends
+    trialExpiredOpen: false,  // blocking paywall when trial FULLY ends (day 8+)
+    upgradeModalOpen: false,  // dismissable upgrade preview (clicked during active trial)
 
     // Plan state — persisted
     plan: null,               // null | 'trial' | 'pro'
@@ -61,7 +62,9 @@ export const useAuthStore = create(persist(
       trialExpiredOpen: false,
     }),
 
-    triggerTrialExpired: () => set({ trialExpiredOpen: true }),
+    triggerTrialExpired: () => set({ trialExpiredOpen: true, upgradeModalOpen: false }),
+    openUpgradeModal:    () => set({ upgradeModalOpen: true }),
+    closeUpgradeModal:   () => set({ upgradeModalOpen: false }),
 
     // ── Auth ──────────────────────────────────────────────────
     init: () => {
