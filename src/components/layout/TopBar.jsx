@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Search, TrendingUp, Menu, X, Loader2, Clock } from 'lucide-react'
+import { Search, TrendingUp, Menu, X, Loader2, Clock, Star } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { STOCKS, INDICES } from '../../data/mock/stocks'
 import { NSE_STOCKS } from '../../data/nseStocks'
@@ -9,6 +9,7 @@ import { formatINR, getChangeColor } from '../../utils/formatters'
 import { UserMenu } from '../auth/UserMenu'
 import { NotificationBell } from '../notifications/NotificationPanel'
 import { useMarketStatus } from '../../hooks/useStocks'
+import { useAuthStore } from '../../store/authStore'
 import { clsx } from 'clsx'
 
 const MarketStatus = () => {
@@ -121,6 +122,36 @@ const SearchDropdown = ({ query, onClose }) => {
   )
 }
 
+const UpgradePill = () => {
+  const plan          = useAuthStore(s => s.plan)
+  const trialDaysLeft = useAuthStore(s => s.trialDaysLeft)
+  const isGuest       = useAuthStore(s => s.isGuest)
+  const triggerTrialExpired = useAuthStore(s => s.triggerTrialExpired)
+
+  if (isGuest || plan !== 'trial') return null
+
+  const days = trialDaysLeft()
+  const urgent = days <= 2
+
+  return (
+    <button
+      onClick={triggerTrialExpired}
+      className={clsx(
+        'flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-xs font-semibold transition-all hover:scale-105',
+        urgent
+          ? 'bg-bear/10 border-bear/30 text-bear hover:bg-bear/20'
+          : 'bg-saffron-500/10 border-saffron-500/30 text-saffron-500 hover:bg-saffron-500/20'
+      )}
+    >
+      <Star size={11} className="flex-shrink-0" />
+      <span className="hidden sm:inline">
+        {days === 0 ? 'Trial ended' : `${days}d left`} · Upgrade
+      </span>
+      <span className="sm:hidden">{days}d</span>
+    </button>
+  )
+}
+
 export const TopBar = ({ onMenuToggle, mobileMenuOpen }) => {
   const [search, setSearch] = useState('')
   const [searchFocused, setSearchFocused] = useState(false)
@@ -173,6 +204,7 @@ export const TopBar = ({ onMenuToggle, mobileMenuOpen }) => {
         <div className="flex items-center gap-2 flex-shrink-0">
           <MarketStatus />
           <NotificationBell />
+          <UpgradePill />
           <UserMenu />
           <button
             className="lg:hidden w-8 h-8 flex items-center justify-center rounded-lg hover:bg-elevated text-secondary hover:text-primary transition-colors"
