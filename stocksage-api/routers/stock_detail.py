@@ -112,7 +112,7 @@ async def stock_detail(symbol: str):
     history, fund, news = await asyncio.gather(history_fut, fund_fut, news_fut)
 
     tech    = compute_technicals(history)
-    verdict = build_verdict(sym, quote.get("price", 0), fund, tech)
+    verdict = build_verdict(sym, quote.get("price") or 0, fund, tech)
 
     sector = SECTOR_MAP.get(sym, fund.get("sector", "Other"))
     market_is_open = get_market_status().get("isOpen", False)

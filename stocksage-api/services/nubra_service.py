@@ -283,7 +283,8 @@ def get_quote(symbol: str) -> "dict | None":
     Live price snapshot for a single NSE stock or index.
     Returns normalised quote dict or None on failure.
     """
-    sym = symbol.upper().strip()
+    from config import NSE_SYMBOL_ALIAS
+    sym = NSE_SYMBOL_ALIAS.get(symbol.upper().strip(), symbol.upper().strip())
 
     with _lock:
         if sym in _quote_cache:
@@ -296,6 +297,10 @@ def get_quote(symbol: str) -> "dict | None":
             headers=hdrs,
             timeout=8,
         )
+        if r.status_code == 400:
+            # 400 = symbol not in Nubra's option-chain universe — not a service error
+            log.debug(f"[Nubra] get_quote({sym}): symbol not in optionchains (400)")
+            return None
         r.raise_for_status()
         d = r.json()
 
@@ -327,7 +332,7 @@ def get_quote(symbol: str) -> "dict | None":
         return result
 
     except Exception as e:
-        log.warning(f"[Nubra] get_quote({sym}) failed: {e}")
+        log.debug(f"[Nubra] get_quote({sym}) failed: {e}")
         return None
 
 

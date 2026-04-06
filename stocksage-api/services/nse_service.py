@@ -131,12 +131,13 @@ def get_india_vix() -> float:
 def get_stock_quote(symbol: str) -> "dict | None":
     """
     Live quote for ANY NSE-listed stock — not just NIFTY50.
-    Works for PAYTM, ZOMATO, NYKAA, IRFC, and all ~2000 NSE-listed equities.
+    Works for PAYTM, ETERNAL (fka ZOMATO), NYKAA, IRFC, and all ~2000 NSE-listed equities.
 
     Returns same schema as get_nifty50_quotes() values, or None on failure.
     NSE endpoint: /api/quote-equity?symbol=SYMBOL
     """
-    sym = symbol.upper().strip()
+    from config import NSE_SYMBOL_ALIAS
+    sym = NSE_SYMBOL_ALIAS.get(symbol.upper().strip(), symbol.upper().strip())
 
     with _lock:
         if sym in _quote_cache:

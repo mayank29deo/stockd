@@ -45,6 +45,12 @@ SCREENER_CACHE_TTL    = 3600      # 1 hour  — screener dataset (paid API calls
 NSE_SUFFIX = ".NS"
 BSE_SUFFIX = ".BO"
 
+# NSE symbol → canonical NSE symbol (for stocks that have been renamed/rebranded).
+# Used by Nubra and NSE direct API calls to resolve the current ticker.
+NSE_SYMBOL_ALIAS = {
+    "ZOMATO": "ETERNAL",   # Zomato Ltd rebranded → Eternal Ltd on NSE (Feb 2025)
+}
+
 # NSE symbol → Yahoo Finance ticker override.
 # Use this when a company has rebranded, merged, or uses a different YF ticker.
 # Key: NSE symbol users/CSVs use.  Value: exact Yahoo Finance ticker (with suffix).
