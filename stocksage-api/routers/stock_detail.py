@@ -99,8 +99,9 @@ async def stock_detail(symbol: str):
     # Quote must come first (history/fund can run in parallel after)
     quote = get_best_quote(sym)
     if "error" in quote and "price" not in quote:
-        if sym not in SECTOR_MAP:
-            raise HTTPException(status_code=404, detail=f"Stock {sym} not found")
+        # Don't 404 — let history/fundamentals load even if live quote is unavailable.
+        # Non-NIFTY50 stocks (ZOMATO, DMART…) may not have a cached snapshot but
+        # history and fundamentals can still be fetched from Nubra/EODHD.
         quote = {"symbol": sym, "price": None, "dataType": "unavailable"}
 
     # Fetch history, fundamentals and news in parallel — saves ~60% backend latency
