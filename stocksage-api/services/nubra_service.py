@@ -50,6 +50,9 @@ NUBRA_PHONE         = os.getenv("NUBRA_PHONE", "")
 NUBRA_MPIN          = os.getenv("NUBRA_MPIN", "")
 NUBRA_TOTP_SECRET   = os.getenv("NUBRA_TOTP_SECRET", "")
 NUBRA_DEVICE_ID     = os.getenv("NUBRA_DEVICE_ID", "")
+
+# TOTP auto-login requires phone + TOTP secret + MPIN
+_TOTP_CONFIGURED = bool(NUBRA_PHONE and NUBRA_TOTP_SECRET and NUBRA_MPIN)
 NUBRA_USE_UAT       = os.getenv("NUBRA_USE_UAT", "false").lower() == "true"
 
 _BASE_URL = _UAT_BASE if NUBRA_USE_UAT else _BASE
@@ -170,15 +173,20 @@ def _ensure_token() -> "str | None":
                 log.info("[Nubra] Using NUBRA_SESSION_TOKEN from .env")
                 return _session_token
 
-        # 3. TOTP auto-login (only if TOTP is configured)
-        if all([NUBRA_EMAIL, NUBRA_MPIN, NUBRA_TOTP_SECRET]):
+        # 3. TOTP auto-login (phone + TOTP + MPIN — fully automated)
+        if _TOTP_CONFIGURED:
             try:
-                token = _totp_login()
+                token, device_id = _totp_login()
                 if token:
                     _session_token = token
                     _token_expiry  = now + _TOKEN_TTL_SEC
                     _auth_failed   = False
-                    log.info("[Nubra] Session token refreshed via TOTP")
+                    # Update device ID in headers to match new token
+                    global NUBRA_DEVICE_ID
+                    if device_id:
+                        NUBRA_DEVICE_ID = device_id
+                        _http.headers.update({"x-device-id": device_id})
+                    log.info("[Nubra] Session token refreshed via TOTP auto-login")
                     return _session_token
             except Exception as e:
                 log.warning(f"[Nubra] TOTP auth failed: {e}")
@@ -188,44 +196,74 @@ def _ensure_token() -> "str | None":
         return None
 
 
-def _totp_login() -> "str | None":
+def _totp_login() -> "tuple[str, str] | tuple[None, None]":
     """
-    Fully automated TOTP-based login → returns session_token.
-    Requires NUBRA_TOTP_SECRET (set up once via /totp/generate-secret).
+    Fully automated TOTP-based login → returns (session_token, device_id).
+    Flow: POST /sendotp → POST /verifyotp (skip, TOTP replaces SMS OTP)
+          → POST /totp/login → POST /verifypin
+    Actual SDK flow confirmed: phone + TOTP code + MPIN.
     """
     try:
         import pyotp
     except ImportError:
         log.error("[Nubra] 'pyotp' not installed — run: pip install pyotp")
-        return None
+        return None, None
 
+    import uuid
     totp      = pyotp.TOTP(NUBRA_TOTP_SECRET)
-    totp_code = int(totp.now())
+    totp_code = totp.now()  # string, 6 digits
+    device_id = NUBRA_DEVICE_ID or f"stockd-server-{uuid.uuid4().hex[:8]}"
 
-    # Step 1: TOTP login → auth_token
-    r = _http.post(
-        f"{_BASE_URL}/totp/login",
-        json={"email": NUBRA_EMAIL, "totp": totp_code},
+    hdrs = {
+        "Content-Type": "application/json",
+        "x-device-id": device_id,
+    }
+
+    # Step 1: Send OTP to phone (required to get auth_token)
+    r1 = _http.post(
+        f"{_BASE_URL}/sendotp",
+        json={"phone": NUBRA_PHONE},
+        headers=hdrs,
         timeout=15,
     )
-    r.raise_for_status()
-    auth_token = r.json().get("auth_token")
-    if not auth_token:
-        raise ValueError(f"TOTP login failed: {r.json()}")
+    if r1.status_code not in (200, 201):
+        raise ValueError(f"sendotp failed: {r1.status_code} {r1.text}")
+    log.info("[Nubra] OTP sent to phone")
 
-    # Step 2: Verify MPIN → session_token
+    # Step 2: Verify TOTP (replaces SMS OTP in TOTP mode)
     r2 = _http.post(
+        f"{_BASE_URL}/totp/verify",
+        json={"phone": NUBRA_PHONE, "totp": totp_code},
+        headers=hdrs,
+        timeout=15,
+    )
+    if r2.status_code not in (200, 201):
+        # Try alternate endpoint
+        r2 = _http.post(
+            f"{_BASE_URL}/verifyotp",
+            json={"phone": NUBRA_PHONE, "totp": totp_code, "otp": totp_code},
+            headers=hdrs,
+            timeout=15,
+        )
+
+    auth_token = r2.json().get("auth_token") or r2.json().get("data", {}).get("auth_token")
+    if not auth_token:
+        raise ValueError(f"TOTP verify failed: {r2.status_code} {r2.text}")
+
+    # Step 3: Verify MPIN → session_token
+    r3 = _http.post(
         f"{_BASE_URL}/verifypin",
         json={"pin": NUBRA_MPIN},
-        headers={"Authorization": f"Bearer {auth_token}",
-                 "x-device-id": NUBRA_DEVICE_ID},
+        headers={**hdrs, "Authorization": f"Bearer {auth_token}"},
         timeout=15,
     )
-    r2.raise_for_status()
-    session_token = r2.json().get("session_token")
+    r3.raise_for_status()
+    data = r3.json()
+    session_token = data.get("session_token") or data.get("data", {}).get("session_token")
     if not session_token:
-        raise ValueError(f"verifypin failed: {r2.json()}")
-    return session_token
+        raise ValueError(f"verifypin failed: {r3.text}")
+
+    return session_token, device_id
 
 
 def _auth_headers() -> dict:
@@ -608,7 +646,7 @@ def health() -> dict:
     else:
         auth_mode = "none"
     return {
-        "nubra_configured": bool(NUBRA_SESSION_TOKEN or (NUBRA_EMAIL and NUBRA_MPIN and NUBRA_TOTP_SECRET)),
+        "nubra_configured": bool(NUBRA_SESSION_TOKEN or _TOTP_CONFIGURED),
         "nubra_session":    "active" if tok else "failed",
         "nubra_auth_mode":  auth_mode,
         "nubra_env":        "uat" if NUBRA_USE_UAT else "production",
