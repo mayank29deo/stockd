@@ -1,6 +1,6 @@
 import { motion } from 'framer-motion'
 import { Link } from 'react-router-dom'
-import { TrendingUp, TrendingDown, Zap, BarChart2, Globe, Shield, ArrowRight, Activity, Wifi, WifiOff, Upload, Sparkles } from 'lucide-react'
+import { TrendingUp, TrendingDown, Zap, BarChart2, Globe, Shield, ArrowRight, Activity, Wifi, WifiOff, Sparkles } from 'lucide-react'
 import { IndexCard } from '../components/market/IndexCard'
 import { SectorHeatmap } from '../components/market/SectorHeatmap'
 import { GeopoliticalFeed } from '../components/market/GeopoliticalFeed'
@@ -164,9 +164,23 @@ export const Dashboard = () => {
             {new Date().toLocaleDateString('en-IN', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })} · IST
           </p>
         </div>
-        <Link to="/discover" className="btn-primary flex items-center gap-1.5 text-sm">
-          <Zap size={15} />
-          Today's Picks
+
+        {/* Portfolio hero CTA — visible above the fold */}
+        <Link to="/portfolio" className="group flex-shrink-0">
+          <div className="relative overflow-hidden flex items-center gap-3 rounded-xl border border-saffron-500/30 bg-gradient-to-r from-saffron-500/10 via-card to-purple-500/10 px-4 py-2.5 hover:border-saffron-500/60 transition-all duration-300">
+            <div className="absolute inset-0 bg-saffron-500/5 opacity-0 group-hover:opacity-100 transition-opacity rounded-xl" />
+            <div className="w-8 h-8 rounded-lg bg-saffron-500/15 border border-saffron-500/25 flex items-center justify-center flex-shrink-0">
+              <Sparkles size={15} className="text-saffron-400" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <p className="text-sm font-bold text-primary leading-none">Your portfolio. Our verdict.</p>
+                <span className="text-[9px] font-bold tracking-widest text-saffron-500 bg-saffron-500/10 px-1.5 py-0.5 rounded-full border border-saffron-500/20 uppercase">New</span>
+              </div>
+              <p className="text-[11px] text-secondary mt-0.5">Drop your Groww / Zerodha CSV → instant Buy·Sell·Hold</p>
+            </div>
+            <ArrowRight size={14} className="text-saffron-400 ml-1 group-hover:translate-x-0.5 transition-transform flex-shrink-0" />
+          </div>
         </Link>
       </motion.div>
 
@@ -235,51 +249,6 @@ export const Dashboard = () => {
 
         {/* Right: sidebar widgets */}
         <div className="space-y-4">
-
-          {/* Portfolio CTA — hero product */}
-          <motion.div
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.45, delay: 0.15 }}
-          >
-            <Link to="/portfolio" className="block group">
-              <div className="relative overflow-hidden rounded-xl border border-saffron-500/30 bg-gradient-to-br from-saffron-500/10 via-card to-purple-500/10 p-4 hover:border-saffron-500/60 transition-all duration-300">
-                {/* Glow blob */}
-                <div className="absolute -top-6 -right-6 w-24 h-24 bg-saffron-500/20 rounded-full blur-2xl pointer-events-none" />
-
-                <div className="flex items-start justify-between mb-3">
-                  <div className="w-9 h-9 rounded-xl bg-saffron-500/15 border border-saffron-500/30 flex items-center justify-center">
-                    <Sparkles size={17} className="text-saffron-400" />
-                  </div>
-                  <span className="text-[9px] font-bold tracking-widest text-saffron-500 uppercase bg-saffron-500/10 px-2 py-0.5 rounded-full border border-saffron-500/20">
-                    New
-                  </span>
-                </div>
-
-                <h3 className="text-sm font-bold text-primary leading-snug mb-1">
-                  Your portfolio.<br />Our verdict.
-                </h3>
-                <p className="text-[11px] text-secondary leading-relaxed mb-3">
-                  Drop your Groww or Zerodha CSV — get instant Buy / Sell / Hold on every stock you own.
-                </p>
-
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-1.5 text-[10px] text-faded">
-                    <Upload size={10} className="text-saffron-500" />
-                    <span>CSV · XML · Excel</span>
-                  </div>
-                  <div className="flex items-center gap-1 text-[11px] font-semibold text-saffron-400 group-hover:gap-2 transition-all">
-                    Analyse now <ArrowRight size={11} />
-                  </div>
-                </div>
-
-                {/* Drag hint strip */}
-                <div className="mt-3 border border-dashed border-saffron-500/25 rounded-lg py-2 text-center text-[10px] text-faded group-hover:border-saffron-500/50 group-hover:text-saffron-400 transition-all">
-                  Drag & drop your file here
-                </div>
-              </div>
-            </Link>
-          </motion.div>
 
           <MarketMoodGauge mood={mood} />
           <SectorHeatmap />
