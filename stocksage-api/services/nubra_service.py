@@ -281,6 +281,10 @@ def _auth_headers() -> dict:
 def get_quote(symbol: str) -> "dict | None":
     """
     Live price snapshot for a single NSE stock or index.
+
+    Strategy:
+      1. /optionchains/{sym}/price  — fast, but only F&O stocks
+      2. /charts/timeseries realTime — covers ALL NSE stocks (slower, ~1s)
     Returns normalised quote dict or None on failure.
     """
     from config import NSE_SYMBOL_ALIAS
@@ -290,6 +294,15 @@ def get_quote(symbol: str) -> "dict | None":
         if sym in _quote_cache:
             return _quote_cache[sym]
 
+    result = _get_quote_optionchain(sym) or _get_quote_timeseries(sym)
+    if result:
+        with _lock:
+            _quote_cache[sym] = result
+    return result
+
+
+def _get_quote_optionchain(sym: str) -> "dict | None":
+    """Fast quote via /optionchains/{sym}/price — F&O stocks only."""
     try:
         hdrs = _auth_headers()
         r    = _http.get(
@@ -298,9 +311,7 @@ def get_quote(symbol: str) -> "dict | None":
             timeout=8,
         )
         if r.status_code == 400:
-            # 400 = symbol not in Nubra's option-chain universe — not a service error
-            log.debug(f"[Nubra] get_quote({sym}): symbol not in optionchains (400)")
-            return None
+            return None   # symbol not in F&O universe — fall through to timeseries
         r.raise_for_status()
         d = r.json()
 
@@ -315,7 +326,7 @@ def get_quote(symbol: str) -> "dict | None":
         if price <= 0:
             return None
 
-        result = {
+        return {
             "symbol":        sym,
             "price":         price,
             "previousClose": prev_close,
@@ -326,13 +337,76 @@ def get_quote(symbol: str) -> "dict | None":
             "lastUpdated":   datetime.now(timezone.utc).isoformat(),
             "source":        "nubra",
         }
-
-        with _lock:
-            _quote_cache[sym] = result
-        return result
-
     except Exception as e:
-        log.debug(f"[Nubra] get_quote({sym}) failed: {e}")
+        log.debug(f"[Nubra] optionchain quote({sym}) failed: {e}")
+        return None
+
+
+def _get_quote_timeseries(sym: str) -> "dict | None":
+    """
+    Real-time quote via /charts/timeseries — works for ALL NSE stocks.
+    Fetches the last 2 days of 1-minute candles with realTime=True and
+    returns the most recent close as the live price.
+    """
+    from datetime import timezone as tz
+    now   = datetime.now(tz.utc)
+    start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    fmt   = "%Y-%m-%dT%H:%M:%S.000Z"
+
+    payload = {
+        "query": [{
+            "exchange":  "NSE",
+            "type":      "STOCK",
+            "values":    [sym],
+            "fields":    ["close", "open", "high", "low", "cumulative_volume"],
+            "startDate": start.strftime(fmt),
+            "endDate":   now.strftime(fmt),
+            "interval":  "1d",
+            "intraDay":  True,
+            "realTime":  True,
+        }]
+    }
+
+    try:
+        hdrs = _auth_headers()
+        r    = _http.post(
+            f"{_BASE_URL}/charts/timeseries",
+            json=payload,
+            headers=hdrs,
+            timeout=12,
+        )
+        r.raise_for_status()
+        candles = _parse_history_response(r.json(), sym)
+        if not candles:
+            return None
+
+        latest = candles[-1]
+        price  = latest["close"]
+        if price <= 0:
+            return None
+
+        # prev_close = previous candle if available, else open
+        prev_close = candles[-2]["close"] if len(candles) >= 2 else latest["open"]
+        change     = round(price - prev_close, 2)
+        change_pct = round((change / prev_close * 100) if prev_close else 0, 4)
+
+        return {
+            "symbol":        sym,
+            "price":         price,
+            "previousClose": prev_close,
+            "change":        change,
+            "changePercent": change_pct,
+            "open":          latest.get("open", price),
+            "high":          latest.get("high", price),
+            "low":           latest.get("low",  price),
+            "volume":        latest.get("volume", 0),
+            "exchange":      "NSE",
+            "currency":      "INR",
+            "lastUpdated":   datetime.now(tz.utc).isoformat(),
+            "source":        "nubra_ts",
+        }
+    except Exception as e:
+        log.debug(f"[Nubra] timeseries quote({sym}) failed: {e}")
         return None
 
 
