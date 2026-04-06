@@ -34,9 +34,9 @@ const ImportSection = ({ onImport }) => {
   const processFile = async (file) => {
     if (!file) return
     const ext = file.name.split('.').pop().toLowerCase()
-    const allowed = ['csv', 'xml', 'pdf']
+    const allowed = ['csv', 'xml', 'pdf', 'xlsx', 'xls']
     if (!allowed.includes(ext)) {
-      setError('Unsupported format. Please upload a CSV, XML, or PDF file.')
+      setError('Unsupported format. Please upload a CSV, XML, XLSX, or PDF file.')
       return
     }
     setParsing(true)
@@ -132,8 +132,8 @@ const ImportSection = ({ onImport }) => {
         <p className="text-sm font-medium text-secondary">
           {parsing ? 'Reading file…' : dragging ? 'Drop file here' : 'Drag & drop or click to browse'}
         </p>
-        <p className="text-xs text-faded mt-1">CSV · XML · PDF &nbsp;·&nbsp; Groww, Zerodha, CDSL CAS, NSDL CAS</p>
-        <input id="portfolio-upload" type="file" accept=".csv,.xml,.pdf" className="hidden"
+        <p className="text-xs text-faded mt-1">CSV · XML · XLSX · PDF &nbsp;·&nbsp; Groww, Zerodha, CDSL CAS, NSDL CAS</p>
+        <input id="portfolio-upload" type="file" accept=".csv,.xml,.pdf,.xlsx,.xls" className="hidden"
           onChange={e => processFile(e.target.files[0])} />
       </div>
 

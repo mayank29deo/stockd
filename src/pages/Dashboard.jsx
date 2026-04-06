@@ -188,7 +188,7 @@ export const Dashboard = () => {
                 <p className="text-sm font-bold text-primary leading-none">Your portfolio. Our verdict.</p>
                 <span className="text-[9px] font-bold tracking-widest text-saffron-500 bg-saffron-500/10 px-1.5 py-0.5 rounded-full border border-saffron-500/20 uppercase">New</span>
               </div>
-              <p className="text-[11px] text-secondary mt-0.5">Drop your Groww or Zerodha CSV — get instant Buy / Sell / Hold on every stock you own.</p>
+              <p className="text-[11px] text-secondary mt-0.5">Drop your Groww or Zerodha CSV / XLSX — get instant Buy / Sell / Hold on every stock you own.</p>
             </div>
             <div className="flex items-center gap-1.5 text-[11px] font-semibold text-saffron-400 group-hover:gap-2.5 transition-all flex-shrink-0">
               Analyse now <ArrowRight size={12} />

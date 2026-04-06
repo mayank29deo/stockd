@@ -1,5 +1,6 @@
 import Papa from 'papaparse'
 import * as pdfjsLib from 'pdfjs-dist'
+import * as XLSX from 'xlsx'
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
   'pdfjs-dist/build/pdf.worker.min.mjs',
@@ -338,6 +339,20 @@ export const parsePDF = async (arrayBuffer) => {
   }
 }
 
+// ─── XLSX Parser ─────────────────────────────────────────────────────────────
+
+export const parseXLSX = (arrayBuffer) => {
+  try {
+    const wb = XLSX.read(arrayBuffer, { type: 'array' })
+    // Use first sheet
+    const ws = wb.Sheets[wb.SheetNames[0]]
+    const csvString = XLSX.utils.sheet_to_csv(ws)
+    return parseCSV(csvString)
+  } catch (e) {
+    return { holdings: [], errors: ['XLSX parse error: ' + e.message] }
+  }
+}
+
 // ─── Unified file parser (async) ─────────────────────────────────────────────
 
 export const parseFile = (file) => new Promise((resolve) => {
@@ -353,6 +368,13 @@ export const parseFile = (file) => new Promise((resolve) => {
   if (ext === 'pdf') {
     const reader = new FileReader()
     reader.onload = async (e) => resolve(await parsePDF(e.target.result))
+    reader.readAsArrayBuffer(file)
+    return
+  }
+
+  if (ext === 'xlsx' || ext === 'xls') {
+    const reader = new FileReader()
+    reader.onload = (e) => resolve(parseXLSX(e.target.result))
     reader.readAsArrayBuffer(file)
     return
   }
