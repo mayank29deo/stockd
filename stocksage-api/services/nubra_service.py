@@ -123,6 +123,19 @@ def available() -> bool:
     return _ensure_token() is not None
 
 
+def _jwt_exp(token: str) -> "float | None":
+    """Extract exp claim from a JWT without verifying signature."""
+    try:
+        import base64, json as _json
+        payload_b64 = token.split(".")[1]
+        # Add padding
+        payload_b64 += "=" * (4 - len(payload_b64) % 4)
+        payload = _json.loads(base64.urlsafe_b64decode(payload_b64))
+        return float(payload["exp"])
+    except Exception:
+        return None
+
+
 def _ensure_token() -> "str | None":
     """
     Return valid session token. Priority:
@@ -140,14 +153,22 @@ def _ensure_token() -> "str | None":
         if _session_token and now < _token_expiry:
             return _session_token
 
-        # 2. Manual session token from .env (use as-is, assume valid)
+        # 2. Manual session token from .env — decode JWT exp to check real expiry
         if NUBRA_SESSION_TOKEN:
-            _session_token = NUBRA_SESSION_TOKEN
-            # Nubra tokens last ~24h — assume it was just set, so give 20h
-            _token_expiry  = now + 20 * 3600
-            _auth_failed   = False
-            log.info("[Nubra] Using NUBRA_SESSION_TOKEN from .env")
-            return _session_token
+            exp = _jwt_exp(NUBRA_SESSION_TOKEN)
+            if exp and now >= exp:
+                log.warning(
+                    f"[Nubra] NUBRA_SESSION_TOKEN expired at "
+                    f"{datetime.fromtimestamp(exp, tz=timezone.utc).isoformat()} — "
+                    "update it in Railway env vars"
+                )
+                # Don't use an expired token — fall through to TOTP or fail
+            else:
+                _session_token = NUBRA_SESSION_TOKEN
+                _token_expiry  = exp if exp else (now + 20 * 3600)
+                _auth_failed   = False
+                log.info("[Nubra] Using NUBRA_SESSION_TOKEN from .env")
+                return _session_token
 
         # 3. TOTP auto-login (only if TOTP is configured)
         if all([NUBRA_EMAIL, NUBRA_MPIN, NUBRA_TOTP_SECRET]):
@@ -268,7 +289,7 @@ def get_quote(symbol: str) -> "dict | None":
         return result
 
     except Exception as e:
-        log.debug(f"[Nubra] get_quote({sym}) failed: {e}")
+        log.warning(f"[Nubra] get_quote({sym}) failed: {e}")
         return None
 
 
