@@ -165,21 +165,34 @@ export const Dashboard = () => {
           </p>
         </div>
 
-        {/* Portfolio hero CTA — visible above the fold */}
-        <Link to="/portfolio" className="group flex-shrink-0">
-          <div className="relative overflow-hidden flex items-center gap-3 rounded-xl border border-saffron-500/30 bg-gradient-to-r from-saffron-500/10 via-card to-purple-500/10 px-4 py-2.5 hover:border-saffron-500/60 transition-all duration-300">
-            <div className="absolute inset-0 bg-saffron-500/5 opacity-0 group-hover:opacity-100 transition-opacity rounded-xl" />
-            <div className="w-8 h-8 rounded-lg bg-saffron-500/15 border border-saffron-500/25 flex items-center justify-center flex-shrink-0">
-              <Sparkles size={15} className="text-saffron-400" />
+        <Link to="/discover" className="btn-primary flex items-center gap-1.5 text-sm flex-shrink-0">
+          <Zap size={15} />
+          Today's Picks
+        </Link>
+      </motion.div>
+
+      {/* Portfolio hero CTA — full-width banner between title and indices */}
+      <motion.div
+        initial={{ opacity: 0, y: -8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, delay: 0.1 }}
+      >
+        <Link to="/portfolio" className="group block">
+          <div className="relative overflow-hidden flex items-center gap-4 rounded-xl border border-saffron-500/30 bg-gradient-to-r from-saffron-500/10 via-card to-purple-500/10 px-5 py-3 hover:border-saffron-500/60 transition-all duration-300">
+            <div className="absolute inset-0 bg-saffron-500/3 opacity-0 group-hover:opacity-100 transition-opacity rounded-xl" />
+            <div className="w-9 h-9 rounded-xl bg-saffron-500/15 border border-saffron-500/25 flex items-center justify-center flex-shrink-0">
+              <Sparkles size={16} className="text-saffron-400" />
             </div>
-            <div>
+            <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2">
                 <p className="text-sm font-bold text-primary leading-none">Your portfolio. Our verdict.</p>
                 <span className="text-[9px] font-bold tracking-widest text-saffron-500 bg-saffron-500/10 px-1.5 py-0.5 rounded-full border border-saffron-500/20 uppercase">New</span>
               </div>
-              <p className="text-[11px] text-secondary mt-0.5">Drop your Groww / Zerodha CSV → instant Buy·Sell·Hold</p>
+              <p className="text-[11px] text-secondary mt-0.5">Drop your Groww or Zerodha CSV — get instant Buy / Sell / Hold on every stock you own.</p>
             </div>
-            <ArrowRight size={14} className="text-saffron-400 ml-1 group-hover:translate-x-0.5 transition-transform flex-shrink-0" />
+            <div className="flex items-center gap-1.5 text-[11px] font-semibold text-saffron-400 group-hover:gap-2.5 transition-all flex-shrink-0">
+              Analyse now <ArrowRight size={12} />
+            </div>
           </div>
         </Link>
       </motion.div>
