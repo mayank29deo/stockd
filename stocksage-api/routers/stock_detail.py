@@ -94,7 +94,7 @@ async def stock_detail(symbol: str):
     """
     sym = symbol.upper()
 
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
 
     # Quote must come first (history/fund can run in parallel after)
     quote = get_best_quote(sym)
