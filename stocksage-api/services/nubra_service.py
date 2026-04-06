@@ -49,7 +49,7 @@ NUBRA_EMAIL         = os.getenv("NUBRA_EMAIL", "")
 NUBRA_PHONE         = os.getenv("NUBRA_PHONE", "")
 NUBRA_MPIN          = os.getenv("NUBRA_MPIN", "")
 NUBRA_TOTP_SECRET   = os.getenv("NUBRA_TOTP_SECRET", "")
-NUBRA_DEVICE_ID     = os.getenv("NUBRA_DEVICE_ID", "stockd-server-01")
+NUBRA_DEVICE_ID     = os.getenv("NUBRA_DEVICE_ID", "")
 NUBRA_USE_UAT       = os.getenv("NUBRA_USE_UAT", "false").lower() == "true"
 
 _BASE_URL = _UAT_BASE if NUBRA_USE_UAT else _BASE
