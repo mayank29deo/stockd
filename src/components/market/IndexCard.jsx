@@ -4,7 +4,7 @@ import { formatINR, formatPercent } from '../../utils/formatters'
 import { clsx } from 'clsx'
 
 export const IndexCard = ({ index, delay = 0 }) => {
-  const isPos = index.changePercent >= 0
+  const isPos = (index.changePercent ?? 0) >= 0
 
   return (
     <motion.div
@@ -22,15 +22,15 @@ export const IndexCard = ({ index, delay = 0 }) => {
           'text-[9px] font-bold px-1 py-0.5 rounded flex-shrink-0',
           isPos ? 'bg-bull/10 text-bull' : 'bg-bear/10 text-bear'
         )}>
-          {isPos ? '▲' : '▼'} {Math.abs(index.changePercent).toFixed(2)}%
+          {isPos ? '▲' : '▼'} {Math.abs(index.changePercent ?? 0).toFixed(2)}%
         </span>
       </div>
 
       <p className="text-lg font-bold font-mono text-primary mb-0.5 leading-tight">
-        {(index.value ?? 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+        {((index.value ?? 0) || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
       </p>
       <p className={clsx('text-[10px] font-semibold mb-2', isPos ? 'text-bull' : 'text-bear')}>
-        {isPos ? '+' : ''}{(index.change ?? 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })} pts
+        {isPos ? '+' : ''}{((index.change ?? 0) || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })} pts
       </p>
 
       <MiniSparkline data={index.priceHistory} positive={isPos} height={36} />

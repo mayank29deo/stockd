@@ -27,19 +27,19 @@ const MarketStatus = () => {
 
   if (isOpen) {
     return (
-      <div className="flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full border border-bull/20 bg-bull/10 text-bull">
+      <div className="flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full border border-bull/20 bg-bull/10 text-bull flex-shrink-0">
         <div className="w-1.5 h-1.5 rounded-full bg-bull animate-pulse" />
-        NSE Live
+        <span className="hidden xs:inline">NSE </span>Live
       </div>
     )
   }
 
   return (
-    <div className="flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full border border-subtle bg-surface text-secondary">
+    <div className="flex items-center gap-1 text-xs font-medium px-2 py-1 rounded-full border border-subtle bg-surface text-secondary flex-shrink-0">
       <Clock size={11} className="text-faded" />
       <span>Closed</span>
       {lastDate && (
-        <span className="text-faded font-normal">· {formatDate(lastDate)}</span>
+        <span className="text-faded font-normal hidden sm:inline">· {formatDate(lastDate)}</span>
       )}
     </div>
   )
@@ -187,7 +187,7 @@ export const TopBar = ({ onMenuToggle, mobileMenuOpen }) => {
             <Search size={15} className="text-faded flex-shrink-0" />
             <input
               type="text"
-              placeholder="Search stocks... (RELIANCE, TCS, Infosys)"
+              placeholder="Search stocks..."
               className="flex-1 bg-transparent text-sm text-primary placeholder:text-faded outline-none min-w-0"
               value={search}
               onChange={e => setSearch(e.target.value)}
@@ -206,9 +206,9 @@ export const TopBar = ({ onMenuToggle, mobileMenuOpen }) => {
         </div>
 
         {/* Right items */}
-        <div className="flex items-center gap-2 flex-shrink-0">
+        <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
           <MarketStatus />
-          <NotificationBell />
+          <span className="hidden sm:flex"><NotificationBell /></span>
           <UpgradePill />
           <UserMenu />
           <button
