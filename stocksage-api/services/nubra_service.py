@@ -199,9 +199,9 @@ def _ensure_token() -> "str | None":
 def _totp_login() -> "tuple[str, str] | tuple[None, None]":
     """
     Fully automated TOTP-based login → returns (session_token, device_id).
-    Flow: POST /sendotp → POST /verifyotp (skip, TOTP replaces SMS OTP)
-          → POST /totp/login → POST /verifypin
-    Actual SDK flow confirmed: phone + TOTP code + MPIN.
+    TOTP flow (does NOT call /sendotp — that is for SMS OTP only):
+      Step 1: POST /totp/login  { phone, totp }  → auth_token
+      Step 2: POST /verifypin   { pin }           → session_token
     """
     try:
         import pyotp
@@ -211,7 +211,7 @@ def _totp_login() -> "tuple[str, str] | tuple[None, None]":
 
     import uuid
     totp      = pyotp.TOTP(NUBRA_TOTP_SECRET)
-    totp_code = totp.now()  # string, 6 digits
+    totp_code = totp.now()  # 6-digit string
     device_id = NUBRA_DEVICE_ID or f"stockd-server-{uuid.uuid4().hex[:8]}"
 
     hdrs = {
@@ -219,47 +219,47 @@ def _totp_login() -> "tuple[str, str] | tuple[None, None]":
         "x-device-id": device_id,
     }
 
-    # Step 1: Send OTP to phone (required to get auth_token)
-    r1 = _http.post(
-        f"{_BASE_URL}/sendotp",
-        json={"phone": NUBRA_PHONE},
-        headers=hdrs,
-        timeout=15,
-    )
-    if r1.status_code not in (200, 201):
-        raise ValueError(f"sendotp failed: {r1.status_code} {r1.text}")
-    log.info("[Nubra] OTP sent to phone")
-
-    # Step 2: Verify TOTP (replaces SMS OTP in TOTP mode)
-    r2 = _http.post(
-        f"{_BASE_URL}/totp/verify",
-        json={"phone": NUBRA_PHONE, "totp": totp_code},
-        headers=hdrs,
-        timeout=15,
-    )
-    if r2.status_code not in (200, 201):
-        # Try alternate endpoint
-        r2 = _http.post(
-            f"{_BASE_URL}/verifyotp",
-            json={"phone": NUBRA_PHONE, "totp": totp_code, "otp": totp_code},
+    # Step 1: TOTP login — skip /sendotp entirely (that's the SMS OTP path)
+    # Try /totp/login first, fall back to /totp/verify if 404/405
+    auth_token = None
+    for endpoint in ("/totp/login", "/totp/verify"):
+        r = _http.post(
+            f"{_BASE_URL}{endpoint}",
+            json={"phone": NUBRA_PHONE, "totp": totp_code},
             headers=hdrs,
             timeout=15,
         )
+        log.debug(f"[Nubra] {endpoint} → {r.status_code}: {r.text[:200]}")
+        if r.status_code in (200, 201):
+            body = r.json()
+            auth_token = (
+                body.get("auth_token")
+                or body.get("data", {}).get("auth_token")
+                or body.get("token")
+                or body.get("data", {}).get("token")
+            )
+            if auth_token:
+                break
 
-    auth_token = r2.json().get("auth_token") or r2.json().get("data", {}).get("auth_token")
     if not auth_token:
-        raise ValueError(f"TOTP verify failed: {r2.status_code} {r2.text}")
+        raise ValueError(f"TOTP login failed — no auth_token from /totp/login or /totp/verify")
 
-    # Step 3: Verify MPIN → session_token
+    # Step 2: Verify MPIN → session_token
     r3 = _http.post(
         f"{_BASE_URL}/verifypin",
         json={"pin": NUBRA_MPIN},
         headers={**hdrs, "Authorization": f"Bearer {auth_token}"},
         timeout=15,
     )
+    log.debug(f"[Nubra] verifypin → {r3.status_code}: {r3.text[:200]}")
     r3.raise_for_status()
     data = r3.json()
-    session_token = data.get("session_token") or data.get("data", {}).get("session_token")
+    session_token = (
+        data.get("session_token")
+        or data.get("data", {}).get("session_token")
+        or data.get("token")
+        or data.get("data", {}).get("token")
+    )
     if not session_token:
         raise ValueError(f"verifypin failed: {r3.text}")
 
