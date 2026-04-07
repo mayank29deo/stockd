@@ -19,6 +19,7 @@ const PRESETS = [
 export const Screener = () => {
   const [filters, setFilters] = useState({})
   const [activePreset, setActivePreset] = useState(null)
+  const [showFilters, setShowFilters] = useState(false)
   const { addToWatchlist, activeWatchlistId } = useWatchlistStore()
   const { addToast } = useUIStore()
   const { data: allStocks } = useStocks()
@@ -94,10 +95,24 @@ export const Screener = () => {
         )}
       </div>
 
+      {/* Mobile filter toggle */}
+      <button
+        className="lg:hidden flex items-center gap-2 text-sm font-medium text-secondary border border-subtle rounded-lg px-4 py-2 bg-card hover:text-primary transition-colors"
+        onClick={() => setShowFilters(f => !f)}
+      >
+        <SlidersHorizontal size={14} />
+        {showFilters ? 'Hide Filters' : 'Show Filters'}
+        {Object.keys(filters).length > 0 && (
+          <span className="ml-auto text-[10px] font-bold text-saffron-500 bg-saffron-500/10 px-1.5 py-0.5 rounded-full">
+            {Object.keys(filters).length}
+          </span>
+        )}
+      </button>
+
       {/* Filters + Results */}
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-5">
         {/* Filter panel */}
-        <div className="bg-card border border-subtle rounded-xl p-4 space-y-4 h-fit lg:sticky lg:top-24">
+        <div className={clsx('bg-card border border-subtle rounded-xl p-4 space-y-4 h-fit lg:sticky lg:top-24', !showFilters && 'hidden lg:block')}>
           <div className="flex items-center gap-2 text-sm font-semibold text-primary">
             <SlidersHorizontal size={15} /> Filters
           </div>
@@ -174,9 +189,15 @@ export const Screener = () => {
                 <table className="w-full text-left">
                   <thead>
                     <tr className="border-b border-subtle">
-                      {['Stock', 'Exchange', 'Sector', 'Price', 'Change', 'P/E', 'ROE', 'RSI', 'Verdict'].map(h => (
-                        <th key={h} className="px-4 py-3 text-[10px] font-semibold text-faded whitespace-nowrap">{h}</th>
-                      ))}
+                      <th className="px-4 py-3 text-[10px] font-semibold text-faded whitespace-nowrap text-left">Stock</th>
+                      <th className="px-4 py-3 text-[10px] font-semibold text-faded whitespace-nowrap hidden sm:table-cell">Exchange</th>
+                      <th className="px-4 py-3 text-[10px] font-semibold text-faded whitespace-nowrap hidden md:table-cell">Sector</th>
+                      <th className="px-4 py-3 text-[10px] font-semibold text-faded whitespace-nowrap">Price</th>
+                      <th className="px-4 py-3 text-[10px] font-semibold text-faded whitespace-nowrap">Change</th>
+                      <th className="px-4 py-3 text-[10px] font-semibold text-faded whitespace-nowrap hidden sm:table-cell">P/E</th>
+                      <th className="px-4 py-3 text-[10px] font-semibold text-faded whitespace-nowrap hidden sm:table-cell">ROE</th>
+                      <th className="px-4 py-3 text-[10px] font-semibold text-faded whitespace-nowrap hidden sm:table-cell">RSI</th>
+                      <th className="px-4 py-3 text-[10px] font-semibold text-faded whitespace-nowrap">Verdict</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -190,18 +211,18 @@ export const Screener = () => {
                         <td className="px-4 py-3">
                           <Link to={`/stock/${stock.symbol}`} className="hover:text-saffron-500 transition-colors">
                             <p className="text-xs font-bold text-primary">{stock.symbol}</p>
-                            <p className="text-[10px] text-faded truncate max-w-[100px]">{stock.name}</p>
+                            <p className="text-[10px] text-faded truncate max-w-[90px]">{stock.name}</p>
                           </Link>
                         </td>
-                        <td className="px-4 py-3"><ExchangeBadge exchange={stock.exchange} /></td>
-                        <td className="px-4 py-3 text-xs text-secondary whitespace-nowrap">{stock.sector}</td>
+                        <td className="px-4 py-3 hidden sm:table-cell"><ExchangeBadge exchange={stock.exchange} /></td>
+                        <td className="px-4 py-3 text-xs text-secondary whitespace-nowrap hidden md:table-cell">{stock.sector}</td>
                         <td className="px-4 py-3 text-xs font-mono font-semibold text-primary">{formatINR(stock.price)}</td>
                         <td className={clsx('px-4 py-3 text-xs font-mono font-semibold', (stock.changePercent ?? 0) >= 0 ? 'text-bull' : 'text-bear')}>
                           {(stock.changePercent ?? 0) >= 0 ? '+' : ''}{(stock.changePercent ?? 0).toFixed(2)}%
                         </td>
-                        <td className="px-4 py-3 text-xs font-mono text-secondary">{stock.fundamentals?.pe?.toFixed(1) ?? '—'}</td>
-                        <td className="px-4 py-3 text-xs font-mono text-secondary">{stock.fundamentals?.roe != null ? `${stock.fundamentals.roe.toFixed(1)}%` : '—'}</td>
-                        <td className="px-4 py-3">
+                        <td className="px-4 py-3 text-xs font-mono text-secondary hidden sm:table-cell">{stock.fundamentals?.pe?.toFixed(1) ?? '—'}</td>
+                        <td className="px-4 py-3 text-xs font-mono text-secondary hidden sm:table-cell">{stock.fundamentals?.roe != null ? `${stock.fundamentals.roe.toFixed(1)}%` : '—'}</td>
+                        <td className="px-4 py-3 hidden sm:table-cell">
                           <span className={clsx('text-xs font-mono font-semibold', (stock.technicals?.rsi14 ?? 50) > 70 ? 'text-bear' : (stock.technicals?.rsi14 ?? 50) < 30 ? 'text-bull' : 'text-secondary')}>
                             {stock.technicals?.rsi14 ?? '—'}
                           </span>

@@ -76,9 +76,9 @@ export const Sentiment = () => {
             <p className="text-lg font-semibold mt-1" style={{ color: moodColor }}>{moodLabel}</p>
             <p className="text-xs text-faded mt-2 leading-relaxed max-w-xs">{mood.description}</p>
           </div>
-          <div className="grid grid-cols-5 gap-1 mt-4 w-full text-center">
-            {[['Extreme\nFear', '#00C897'], ['Fear', '#4E9AF1'], ['Neutral', '#9999B3'], ['Greed', '#FFB020'], ['Extreme\nGreed', '#FF4757']].map(([label, color]) => (
-              <div key={label} className="text-[9px] leading-tight whitespace-pre-line" style={{ color }}>
+          <div className="flex justify-between mt-4 w-full text-center">
+            {[['Ext.\nFear', '#00C897'], ['Fear', '#4E9AF1'], ['Neutral', '#9999B3'], ['Greed', '#FFB020'], ['Ext.\nGreed', '#FF4757']].map(([label, color]) => (
+              <div key={label} className="text-[8px] leading-tight whitespace-pre-line flex-1" style={{ color }}>
                 {label}
               </div>
             ))}

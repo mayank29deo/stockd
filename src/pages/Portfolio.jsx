@@ -197,10 +197,10 @@ const HoldingRow = ({ holding }) => {
             </div>
           </div>
         </td>
-        <td className="px-4 py-3 text-xs font-mono text-secondary text-center">{holding.quantity}</td>
-        <td className="px-4 py-3 text-xs font-mono text-secondary text-right">{formatINR(holding.avgBuyPrice)}</td>
+        <td className="px-4 py-3 text-xs font-mono text-secondary text-center hidden sm:table-cell">{holding.quantity}</td>
+        <td className="px-4 py-3 text-xs font-mono text-secondary text-right hidden sm:table-cell">{formatINR(holding.avgBuyPrice)}</td>
         <td className="px-4 py-3 text-xs font-mono text-primary text-right font-semibold">{formatINR(holding.currentPrice)}</td>
-        <td className="px-4 py-3 text-xs font-mono text-right">
+        <td className="px-4 py-3 text-xs font-mono text-right hidden sm:table-cell">
           <p className="text-primary font-semibold">{formatINR(holding.currentValue, true)}</p>
         </td>
         <td className="px-4 py-3 text-right">
@@ -353,12 +353,18 @@ export const Portfolio = () => {
                 <h2 className="text-sm font-semibold text-primary">Holdings ({activePortfolio.holdings?.length})</h2>
               </div>
               <div className="overflow-x-auto">
-                <table className="w-full">
+                <p className="text-[10px] text-faded text-right px-4 pb-1 sm:hidden">← swipe to see more</p>
+                <table className="w-full min-w-[480px]">
                   <thead>
                     <tr className="border-b border-subtle">
-                      {['Stock', 'Qty', 'Avg Price', 'CMP', 'Value', 'P&L', 'Verdict', ''].map(h => (
-                        <th key={h} className="px-4 py-2.5 text-[10px] font-semibold text-faded text-left first:text-left text-right last:text-center">{h}</th>
-                      ))}
+                      <th className="px-4 py-2.5 text-[10px] font-semibold text-faded text-left">Stock</th>
+                      <th className="px-4 py-2.5 text-[10px] font-semibold text-faded text-center hidden sm:table-cell">Qty</th>
+                      <th className="px-4 py-2.5 text-[10px] font-semibold text-faded text-right hidden sm:table-cell">Avg Price</th>
+                      <th className="px-4 py-2.5 text-[10px] font-semibold text-faded text-right">CMP</th>
+                      <th className="px-4 py-2.5 text-[10px] font-semibold text-faded text-right hidden sm:table-cell">Value</th>
+                      <th className="px-4 py-2.5 text-[10px] font-semibold text-faded text-right">P&L</th>
+                      <th className="px-4 py-2.5 text-[10px] font-semibold text-faded text-center">Verdict</th>
+                      <th className="px-4 py-2.5 text-[10px] font-semibold text-faded text-center"></th>
                     </tr>
                   </thead>
                   <tbody>

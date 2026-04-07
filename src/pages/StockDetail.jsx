@@ -209,36 +209,36 @@ export const StockDetail = () => {
 
         {/* Verdict details */}
         {verdict && (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4 pt-4 border-t border-subtle">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-4 pt-4 border-t border-subtle">
             <div className="flex items-center gap-2">
-              <Target size={14} className="text-bull flex-shrink-0" />
-              <div>
-                <p className="text-[10px] text-faded">Target Price</p>
-                <p className="text-sm font-mono font-bold text-primary">{formatINR(verdict.targetPrice)}</p>
+              <Target size={13} className="text-bull flex-shrink-0" />
+              <div className="min-w-0">
+                <p className="text-[10px] text-faded">Target</p>
+                <p className="text-xs font-mono font-bold text-primary truncate">{formatINR(verdict.targetPrice)}</p>
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <ShieldAlert size={14} className="text-bear flex-shrink-0" />
-              <div>
+              <ShieldAlert size={13} className="text-bear flex-shrink-0" />
+              <div className="min-w-0">
                 <p className="text-[10px] text-faded">Stop Loss</p>
-                <p className="text-sm font-mono font-bold text-primary">{formatINR(verdict.stopLoss)}</p>
+                <p className="text-xs font-mono font-bold text-primary truncate">{formatINR(verdict.stopLoss)}</p>
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <Clock size={14} className="text-caution flex-shrink-0" />
-              <div>
-                <p className="text-[10px] text-faded">Time Horizon</p>
-                <p className={clsx('text-sm font-semibold capitalize', HORIZON_LABELS[horizon]?.color)}>
-                  {HORIZON_LABELS[horizon]?.label}-term · {HORIZON_LABELS[horizon]?.sub}
+              <Clock size={13} className="text-caution flex-shrink-0" />
+              <div className="min-w-0">
+                <p className="text-[10px] text-faded">Horizon</p>
+                <p className={clsx('text-xs font-semibold capitalize truncate', HORIZON_LABELS[horizon]?.color)}>
+                  {HORIZON_LABELS[horizon]?.label}-term
                 </p>
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <ExternalLink size={14} className="text-secondary flex-shrink-0" />
-              <div>
-                <p className="text-[10px] text-faded">Conviction · Risk/Reward</p>
-                <p className="text-sm font-semibold text-primary">
-                  {verdict.conviction != null ? `${verdict.conviction}%` : '—'}
+              <ExternalLink size={13} className="text-secondary flex-shrink-0" />
+              <div className="min-w-0">
+                <p className="text-[10px] text-faded">Conviction</p>
+                <p className="text-xs font-semibold text-primary truncate">
+                  {verdict.conviction != null ? `${verdict.conviction}%` : verdict.confidence ? `${verdict.confidence}%` : '—'}
                   {verdict.riskRewardRatio != null ? ` · ${verdict.riskRewardRatio}x` : ''}
                 </p>
               </div>
@@ -412,7 +412,7 @@ export const StockDetail = () => {
         >
           <h2 className="text-sm font-semibold text-primary mb-4">Fundamentals</h2>
           {fund ? (
-            <div className="grid grid-cols-2 gap-x-6 gap-y-3">
+            <div className="grid grid-cols-2 gap-x-3 gap-y-2">
               {[
                 ['P/E Ratio', fund.pe?.toFixed(1)],
                 ['P/B Ratio', fund.pb?.toFixed(1)],
