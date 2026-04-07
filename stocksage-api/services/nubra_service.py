@@ -211,7 +211,7 @@ def _totp_login() -> "tuple[str, str] | tuple[None, None]":
 
     import uuid
     totp      = pyotp.TOTP(NUBRA_TOTP_SECRET)
-    totp_code = totp.now()  # 6-digit string
+    totp_code = int(totp.now())  # Nubra expects uint32 (integer), NOT a string
     device_id = NUBRA_DEVICE_ID or f"stockd-server-{uuid.uuid4().hex[:8]}"
 
     hdrs = {
@@ -219,30 +219,21 @@ def _totp_login() -> "tuple[str, str] | tuple[None, None]":
         "x-device-id": device_id,
     }
 
-    # Step 1: TOTP login — skip /sendotp entirely (that's the SMS OTP path)
-    # Try /totp/login first, fall back to /totp/verify if 404/405
-    auth_token = None
-    for endpoint in ("/totp/login", "/totp/verify"):
-        r = _http.post(
-            f"{_BASE_URL}{endpoint}",
-            json={"phone": NUBRA_PHONE, "totp": totp_code},
-            headers=hdrs,
-            timeout=15,
-        )
-        log.debug(f"[Nubra] {endpoint} → {r.status_code}: {r.text[:200]}")
-        if r.status_code in (200, 201):
-            body = r.json()
-            auth_token = (
-                body.get("auth_token")
-                or body.get("data", {}).get("auth_token")
-                or body.get("token")
-                or body.get("data", {}).get("token")
-            )
-            if auth_token:
-                break
+    # Step 1: POST /totp/login { phone, totp (int) } → auth_token
+    r = _http.post(
+        f"{_BASE_URL}/totp/login",
+        json={"phone": NUBRA_PHONE, "totp": totp_code},
+        headers=hdrs,
+        timeout=15,
+    )
+    log.debug(f"[Nubra] /totp/login → {r.status_code}: {r.text[:200]}")
+    if r.status_code not in (200, 201):
+        raise ValueError(f"TOTP login failed: {r.status_code} {r.text[:200]}")
 
+    body = r.json()
+    auth_token = body.get("auth_token") or body.get("data", {}).get("auth_token")
     if not auth_token:
-        raise ValueError(f"TOTP login failed — no auth_token from /totp/login or /totp/verify")
+        raise ValueError(f"TOTP login: no auth_token in response: {r.text[:200]}")
 
     # Step 2: Verify MPIN → session_token
     r3 = _http.post(
