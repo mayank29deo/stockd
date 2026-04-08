@@ -153,18 +153,19 @@ async def lifespan(app: FastAPI):
     # 2b. Nubra auth warm-up (non-blocking — logs result, doesn't block startup)
     try:
         import services.nubra_service as nubra
+        print(f"[Nubra] SESSION_TOKEN set: {bool(nubra.NUBRA_SESSION_TOKEN)} | TOTP configured: {nubra._TOTP_CONFIGURED}")
         if nubra.available():
-            print("[Nubra] Authenticated OK — using Nubra as primary data source")
+            print("[Nubra] ✅ Authenticated OK — using Nubra as primary data source")
         else:
             missing = [k for k, v in {
-                "NUBRA_EMAIL": nubra.NUBRA_EMAIL,
+                "NUBRA_PHONE": nubra.NUBRA_PHONE,
                 "NUBRA_MPIN":  nubra.NUBRA_MPIN,
                 "NUBRA_TOTP_SECRET": nubra.NUBRA_TOTP_SECRET,
             }.items() if not v]
             if missing:
-                print(f"[Nubra] Not configured (missing: {', '.join(missing)}) — using NSE/RapidAPI fallbacks")
+                print(f"[Nubra] ❌ Not configured (missing: {', '.join(missing)}) — using NSE/RapidAPI fallbacks")
             else:
-                print("[Nubra] Auth failed — check credentials. Falling back to NSE/RapidAPI")
+                print("[Nubra] ❌ Auth failed — check credentials. Falling back to NSE/RapidAPI")
     except Exception as e:
         print(f"[Nubra] Startup check error: {e}")
 
