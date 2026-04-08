@@ -62,8 +62,9 @@ _BASE_URL = _UAT_BASE if NUBRA_USE_UAT else _BASE
 _lock          = threading.RLock()
 _session_token: "str | None" = None
 _token_expiry:  float      = 0.0   # unix timestamp when token expires
-_TOKEN_TTL_SEC             = 23 * 3600  # Nubra tokens last ~24h; refresh at 23h
-_auth_failed               = False      # latching flag to stop retry storms
+_TOKEN_TTL_SEC             = 10 * 3600  # Nubra tokens last ~12h; refresh at 10h
+_auth_failed               = False      # flag to stop retry storms
+_auth_failed_at: float     = 0.0        # when auth last failed — retry after 5 min
 
 # Request-level cache for quotes (60s TTL)
 _quote_cache = TTLCache(maxsize=300, ttl=60)
@@ -143,55 +144,63 @@ def _ensure_token() -> "str | None":
     """
     Return valid session token. Priority:
       1. In-memory cached token (not expired)
-      2. NUBRA_SESSION_TOKEN from .env (manual, ~24h lifetime)
+      2. NUBRA_SESSION_TOKEN from env (manual, ~12h lifetime)
       3. TOTP auto-login (fully automated, requires TOTP secret)
     Thread-safe. Returns None if no auth method works.
+    _auth_failed resets after 5 min so transient failures self-heal.
     """
-    global _session_token, _token_expiry, _auth_failed
+    global _session_token, _token_expiry, _auth_failed, _auth_failed_at
 
     with _lock:
         now = time.time()
+
+        # Reset auth_failed after 5 minutes so transient errors self-heal
+        if _auth_failed and (now - _auth_failed_at) > 300:
+            _auth_failed = False
 
         # 1. Valid in-memory token
         if _session_token and now < _token_expiry:
             return _session_token
 
-        # 2. Manual session token from .env — decode JWT exp to check real expiry
+        # 2. Manual session token from env — decode JWT exp to check real expiry
         if NUBRA_SESSION_TOKEN:
             exp = _jwt_exp(NUBRA_SESSION_TOKEN)
             if exp and now >= exp:
                 log.warning(
                     f"[Nubra] NUBRA_SESSION_TOKEN expired at "
                     f"{datetime.fromtimestamp(exp, tz=timezone.utc).isoformat()} — "
-                    "update it in Railway env vars"
+                    "attempting TOTP auto-refresh"
                 )
-                # Don't use an expired token — fall through to TOTP or fail
+                # Fall through to TOTP
             else:
                 _session_token = NUBRA_SESSION_TOKEN
-                _token_expiry  = exp if exp else (now + 20 * 3600)
+                _token_expiry  = exp if exp else (now + 11 * 3600)
                 _auth_failed   = False
-                log.info("[Nubra] Using NUBRA_SESSION_TOKEN from .env")
+                log.info("[Nubra] Using NUBRA_SESSION_TOKEN from env")
                 return _session_token
 
         # 3. TOTP auto-login (phone + TOTP + MPIN — fully automated)
-        if _TOTP_CONFIGURED:
+        if _TOTP_CONFIGURED and not _auth_failed:
             try:
                 token, device_id = _totp_login()
                 if token:
+                    # Decode real expiry from JWT, fall back to 10h
+                    exp = _jwt_exp(token)
                     _session_token = token
-                    _token_expiry  = now + _TOKEN_TTL_SEC
+                    _token_expiry  = exp if exp else (now + _TOKEN_TTL_SEC)
                     _auth_failed   = False
-                    # Update device ID in headers to match new token
                     global NUBRA_DEVICE_ID
                     if device_id:
                         NUBRA_DEVICE_ID = device_id
                         _http.headers.update({"x-device-id": device_id})
-                    log.info("[Nubra] Session token refreshed via TOTP auto-login")
+                    log.info(f"[Nubra] ✅ TOTP auto-login OK, token valid until "
+                             f"{datetime.fromtimestamp(_token_expiry, tz=timezone.utc).isoformat()}")
                     return _session_token
             except Exception as e:
                 log.warning(f"[Nubra] TOTP auth failed: {e}")
-                _auth_failed   = True
-                _session_token = None
+                _auth_failed    = True
+                _auth_failed_at = now
+                _session_token  = None
 
         return None
 
