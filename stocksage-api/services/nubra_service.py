@@ -122,8 +122,6 @@ def available() -> bool:
     Returns True if Nubra is configured AND we have (or can obtain) a valid
     session token. False means callers should skip Nubra entirely.
     """
-    if _auth_failed:
-        return False
     return _ensure_token() is not None
 
 
