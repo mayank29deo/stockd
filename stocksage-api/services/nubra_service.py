@@ -343,12 +343,12 @@ def _get_quote_optionchain(sym: str) -> "dict | None":
 def _get_quote_timeseries(sym: str) -> "dict | None":
     """
     Real-time quote via /charts/timeseries — works for ALL NSE stocks.
-    Fetches the last 2 days of 1-minute candles with realTime=True and
-    returns the most recent close as the live price.
+    Fetches the last 2 hours of candles with realTime=True and returns
+    the most recent close as the live price.
     """
     from datetime import timezone as tz
     now   = datetime.now(tz.utc)
-    start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    start = now - timedelta(hours=2)   # only last 2h — smaller payload, faster
     fmt   = "%Y-%m-%dT%H:%M:%S.000Z"
 
     payload = {
