@@ -198,6 +198,7 @@ async def all_stocks(
     - Market open  → live NSE data
     - Market closed → D-1 snapshot (with dataType: "D1" on each item)
     """
+    global _bulk_cache, _bulk_cache_ts
     market_is_open = _market_open()
     raw_quotes: list = []
 
@@ -233,7 +234,6 @@ async def all_stocks(
 
             if raw_quotes:
                 with _bulk_lock:
-                    global _bulk_cache, _bulk_cache_ts
                     _bulk_cache    = raw_quotes
                     _bulk_cache_ts = time.time()
     else:
