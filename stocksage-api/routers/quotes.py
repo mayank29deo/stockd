@@ -42,26 +42,29 @@ def _live_quote(symbol: str) -> "dict | None":
         if q and q.get("price", 0) > 0:
             return {**q, "dataType": "live"}
 
-    # 1. NSE NIFTY50 batch (one call for all 50, cached 60s)
-    nse_batch = get_nifty50_quotes()
-    if symbol in nse_batch:
-        return {**nse_batch[symbol], "dataType": "live"}
-
-    # 2. NSE individual quote — works for ALL ~2000 NSE-listed stocks
-    q = nse_get_quote(symbol)
-    if q and q.get("price", 0) > 0:
-        return {**q, "dataType": "live"}
-
-    # 3. RapidAPI Yahoo Finance — cloud-reliable, covers all NSE/BSE stocks
-    if ryf.available():
-        q = ryf.get_quote(symbol)
-        if q and q.get("price", 0) > 0 and "error" not in q:
-            return {**q, "dataType": "live"}
-
-    # 4. yfinance last resort (unreliable from cloud)
-    q = yf_get_quote(symbol)
-    if "price" in q and q.get("price", 0) > 0:
-        return {**q, "dataType": "live"}
+    # ── DEBUG: NSE/Yahoo disabled to isolate Nubra ─────────────────────────────
+    # Re-enable after confirming Nubra is working end-to-end.
+    # # 1. NSE NIFTY50 batch (one call for all 50, cached 60s)
+    # nse_batch = get_nifty50_quotes()
+    # if symbol in nse_batch:
+    #     return {**nse_batch[symbol], "dataType": "live"}
+    #
+    # # 2. NSE individual quote — works for ALL ~2000 NSE-listed stocks
+    # q = nse_get_quote(symbol)
+    # if q and q.get("price", 0) > 0:
+    #     return {**q, "dataType": "live"}
+    #
+    # # 3. RapidAPI Yahoo Finance — cloud-reliable, covers all NSE/BSE stocks
+    # if ryf.available():
+    #     q = ryf.get_quote(symbol)
+    #     if q and q.get("price", 0) > 0 and "error" not in q:
+    #         return {**q, "dataType": "live"}
+    #
+    # # 4. yfinance last resort (unreliable from cloud)
+    # q = yf_get_quote(symbol)
+    # if "price" in q and q.get("price", 0) > 0:
+    #     return {**q, "dataType": "live"}
+    # ───────────────────────────────────────────────────────────────────────────
 
     return None
 
@@ -215,35 +218,38 @@ async def all_stocks(
                 if td_quotes:
                     raw_quotes = [td_quotes[s] for s in NIFTY50_SYMBOLS[:limit] if s in td_quotes]
 
-            # 1. NSE batch — ONE call for all 50 (~500ms, free, no quota)
-            if not raw_quotes:
-                nse_q = get_nifty50_quotes()
-                if nse_q:
-                    raw_quotes = [nse_q[s] for s in NIFTY50_SYMBOLS[:limit] if s in nse_q]
-
-            # 2. Nubra bulk — parallel REST (fallback if NSE is blocked)
+            # ── DEBUG: NSE/yfinance disabled — Nubra-only to confirm it's working ──
+            # 1. Nubra bulk — single batch timeseries call for all 50
             if not raw_quotes and nubra.available():
                 nubra_quotes = nubra.get_nifty50_quotes()
                 if nubra_quotes:
                     raw_quotes = [nubra_quotes[s] for s in NIFTY50_SYMBOLS[:limit] if s in nubra_quotes]
 
-            # 3. yfinance last resort
-            if not raw_quotes:
-                raw_quotes = [q for q in get_quotes_bulk(NIFTY50_SYMBOLS[:limit])
-                              if not ("error" in q and "price" not in q)]
+            # # 1. NSE batch — ONE call for all 50 (~500ms, free, no quota)
+            # if not raw_quotes:
+            #     nse_q = get_nifty50_quotes()
+            #     if nse_q:
+            #         raw_quotes = [nse_q[s] for s in NIFTY50_SYMBOLS[:limit] if s in nse_q]
+            #
+            # # 3. yfinance last resort
+            # if not raw_quotes:
+            #     raw_quotes = [q for q in get_quotes_bulk(NIFTY50_SYMBOLS[:limit])
+            #                   if not ("error" in q and "price" not in q)]
+            # ─────────────────────────────────────────────────────────────────────
 
             if raw_quotes:
                 with _bulk_lock:
                     _bulk_cache    = raw_quotes
                     _bulk_cache_ts = time.time()
     else:
-        # Market closed — use snapshot
+        # Market closed — use snapshot (Nubra not relevant here)
         raw_quotes = snap.get_all_quotes_snapshot()
         if not raw_quotes:
-            # No snapshot yet (first run after deployment) — try live anyway
-            nse_quotes = get_nifty50_quotes()
-            if nse_quotes:
-                raw_quotes = list(nse_quotes.values())
+            # No snapshot yet — try Nubra for last known prices
+            if nubra.available():
+                nubra_quotes = nubra.get_nifty50_quotes()
+                if nubra_quotes:
+                    raw_quotes = list(nubra_quotes.values())
 
     results = []
     for q in raw_quotes:
