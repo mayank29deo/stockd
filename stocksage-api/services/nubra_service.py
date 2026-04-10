@@ -431,10 +431,91 @@ def get_quotes_bulk(symbols: list[str]) -> dict:
 
 def get_nifty50_quotes() -> dict:
     """
-    Fetch all NIFTY50 stocks in parallel from Nubra.
+    Fetch all NIFTY50 stocks in ONE batch timeseries call.
+    Falls back to parallel individual calls if batch fails.
     Returns dict keyed by symbol — same schema as nse_service.get_nifty50_quotes().
     """
     from config import NIFTY50_SYMBOLS
+    from datetime import timezone as tz
+
+    now   = datetime.now(tz.utc)
+    start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    fmt   = "%Y-%m-%dT%H:%M:%S.000Z"
+
+    payload = {
+        "query": [{
+            "exchange":  "NSE",
+            "type":      "STOCK",
+            "values":    list(NIFTY50_SYMBOLS),
+            "fields":    ["close", "open", "high", "low", "cumulative_volume"],
+            "startDate": start.strftime(fmt),
+            "endDate":   now.strftime(fmt),
+            "interval":  "1d",
+            "intraDay":  True,
+            "realTime":  True,
+        }]
+    }
+
+    try:
+        hdrs = _auth_headers()
+        r = _http.post(
+            f"{_BASE_URL}/charts/timeseries",
+            json=payload,
+            headers=hdrs,
+            timeout=20,
+        )
+        r.raise_for_status()
+        data    = r.json()
+        results = data.get("result", [])
+        if not results:
+            raise ValueError("empty batch result")
+
+        quotes = {}
+        for entry in results:
+            for values_obj in entry.get("values", []):
+                for sym, sym_data in values_obj.items():
+                    if not isinstance(sym_data, dict):
+                        continue
+                    def _ts_list(key):
+                        return {item["ts"]: item["v"] for item in sym_data.get(key, []) if item.get("v")}
+                    closes = _ts_list("close")
+                    if not closes:
+                        continue
+                    last_ts = max(closes.keys())
+                    opens   = _ts_list("open")
+                    highs   = _ts_list("high")
+                    lows    = _ts_list("low")
+                    vols    = _ts_list("cumulative_volume")
+
+                    price = _paise_to_inr(closes[last_ts])
+                    if price <= 0:
+                        continue
+                    prev_ts = sorted(closes.keys())[-2] if len(closes) >= 2 else None
+                    prev_close = _paise_to_inr(closes[prev_ts]) if prev_ts else price
+                    change = round(price - prev_close, 2)
+                    change_pct = round((change / prev_close * 100) if prev_close else 0, 4)
+
+                    quotes[sym] = {
+                        "symbol":        sym,
+                        "price":         price,
+                        "previousClose": prev_close,
+                        "change":        change,
+                        "changePercent": change_pct,
+                        "open":          _paise_to_inr(opens.get(last_ts, closes[last_ts])),
+                        "high":          _paise_to_inr(highs.get(last_ts, closes[last_ts])),
+                        "low":           _paise_to_inr(lows.get(last_ts, closes[last_ts])),
+                        "volume":        int(vols.get(last_ts, 0) or 0),
+                        "exchange":      "NSE",
+                        "currency":      "INR",
+                        "lastUpdated":   datetime.now(tz.utc).isoformat(),
+                        "source":        "nubra_batch",
+                    }
+        if quotes:
+            return quotes
+    except Exception as e:
+        log.debug(f"[Nubra] batch timeseries failed: {e} — falling back to parallel")
+
+    # Fallback: parallel individual calls
     return get_quotes_bulk(NIFTY50_SYMBOLS)
 
 

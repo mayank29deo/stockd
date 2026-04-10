@@ -1,3 +1,5 @@
+import time
+import threading
 from fastapi import APIRouter, HTTPException, Query
 from services.yahoo_service import get_quote as yf_get_quote, get_quotes_bulk, get_market_status
 from services.nse_service import get_nifty50_quotes, get_stock_quote as nse_get_quote
@@ -8,6 +10,12 @@ import services.truedata_service as truedata
 from config import NIFTY50_SYMBOLS, SECTOR_MAP
 
 router = APIRouter(prefix="/api", tags=["quotes"])
+
+# ── Bulk NIFTY50 cache (30s) — prevents repeated 50-call Nubra/NSE batches ────
+_bulk_lock      = threading.Lock()
+_bulk_cache: "list | None" = None
+_bulk_cache_ts: float      = 0.0
+_BULK_TTL                  = 30  # seconds
 
 
 # ── Data-source helpers ───────────────────────────────────────────────────────
@@ -194,28 +202,40 @@ async def all_stocks(
     raw_quotes: list = []
 
     if market_is_open:
-        # 0. TrueData — in-memory WebSocket tick cache, fastest possible
-        if truedata.available():
-            td_quotes = truedata.get_nifty50_quotes()
-            if td_quotes:
-                raw_quotes = [td_quotes[s] for s in NIFTY50_SYMBOLS[:limit] if s in td_quotes]
+        # Check 30s bulk cache first — avoids repeated batch fetches
+        with _bulk_lock:
+            if _bulk_cache is not None and (time.time() - _bulk_cache_ts) < _BULK_TTL:
+                raw_quotes = _bulk_cache
 
-        # 0b. Nubra bulk — parallel REST
-        if not raw_quotes and nubra.available():
-            nubra_quotes = nubra.get_nifty50_quotes()
-            if nubra_quotes:
-                raw_quotes = [nubra_quotes[s] for s in NIFTY50_SYMBOLS[:limit] if s in nubra_quotes]
-
-        # 1. NSE batch fallback — all 50 in one call
         if not raw_quotes:
-            nse_q = get_nifty50_quotes()
-            if nse_q:
-                raw_quotes = [nse_q[s] for s in NIFTY50_SYMBOLS[:limit] if s in nse_q]
+            # 0. TrueData — in-memory WebSocket tick cache, fastest possible
+            if truedata.available():
+                td_quotes = truedata.get_nifty50_quotes()
+                if td_quotes:
+                    raw_quotes = [td_quotes[s] for s in NIFTY50_SYMBOLS[:limit] if s in td_quotes]
 
-        # 2. yfinance last resort
-        if not raw_quotes:
-            raw_quotes = [q for q in get_quotes_bulk(NIFTY50_SYMBOLS[:limit])
-                          if not ("error" in q and "price" not in q)]
+            # 1. NSE batch — ONE call for all 50 (~500ms, free, no quota)
+            if not raw_quotes:
+                nse_q = get_nifty50_quotes()
+                if nse_q:
+                    raw_quotes = [nse_q[s] for s in NIFTY50_SYMBOLS[:limit] if s in nse_q]
+
+            # 2. Nubra bulk — parallel REST (fallback if NSE is blocked)
+            if not raw_quotes and nubra.available():
+                nubra_quotes = nubra.get_nifty50_quotes()
+                if nubra_quotes:
+                    raw_quotes = [nubra_quotes[s] for s in NIFTY50_SYMBOLS[:limit] if s in nubra_quotes]
+
+            # 3. yfinance last resort
+            if not raw_quotes:
+                raw_quotes = [q for q in get_quotes_bulk(NIFTY50_SYMBOLS[:limit])
+                              if not ("error" in q and "price" not in q)]
+
+            if raw_quotes:
+                with _bulk_lock:
+                    global _bulk_cache, _bulk_cache_ts
+                    _bulk_cache    = raw_quotes
+                    _bulk_cache_ts = time.time()
     else:
         # Market closed — use snapshot
         raw_quotes = snap.get_all_quotes_snapshot()

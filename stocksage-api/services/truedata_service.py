@@ -41,7 +41,7 @@ log = logging.getLogger("truedata")
 
 TRUEDATA_USERNAME = os.getenv("TRUEDATA_USERNAME", "")
 TRUEDATA_PASSWORD = os.getenv("TRUEDATA_PASSWORD", "")
-_LIVE_PORT        = int(os.getenv("TRUEDATA_PORT", "8086"))
+_LIVE_PORT        = int(os.getenv("TRUEDATA_PORT", "8082"))
 
 _CONFIGURED = bool(TRUEDATA_USERNAME and TRUEDATA_PASSWORD)
 
