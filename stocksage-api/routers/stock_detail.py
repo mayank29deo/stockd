@@ -6,6 +6,7 @@ import services.rapidapi_yf_service as ryf
 import services.yahoo_service as yf_svc
 import services.nubra_service as nubra
 import services.truedata_service as truedata
+import services.truedata_rest_service as truedata_rest
 from services.technical_service import compute_technicals
 from services.verdict_service import build_verdict
 from services.news_service import get_stock_news
@@ -68,6 +69,17 @@ def _get_history(symbol: str, period: str = "1y") -> list:
 
 
 def _get_fundamentals(symbol: str) -> dict:
+    # 0. TrueData REST — free trial, ratios + corporate info
+    if truedata_rest.available():
+        f = truedata_rest.get_fundamentals(symbol)
+        if f and len(f) > 2:  # more than just dataSource key
+            # Optionally enrich with corporate info (sector, name)
+            corp = truedata_rest.get_corporate_info(symbol)
+            if corp:
+                f = {**f, **{k: v for k, v in corp.items() if k not in f}}
+            snap.save_fundamentals_snapshot(symbol, f)
+            return f
+
     # 1. EODHD (richest fundamental data — when subscribed)
     if eodhd.available():
         f = eodhd.get_fundamentals(symbol)

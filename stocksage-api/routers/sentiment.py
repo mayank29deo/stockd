@@ -2,6 +2,7 @@ from fastapi import APIRouter
 from services.news_service import get_market_news
 from services.nse_service import get_india_vix
 import services.twelvedata_service as td
+import services.truedata_rest_service as truedata_rest
 
 router = APIRouter(prefix="/api/sentiment", tags=["sentiment"])
 
@@ -56,6 +57,17 @@ def _fetch_macro() -> dict:
 
     fg_value, fg_label = _build_fear_greed(vix)
 
+    # 3. FII/DII — TrueData Corporate REST (live daily flows)
+    fii_net = _DEFAULTS["fiiNetFlowCr"]
+    dii_net = _DEFAULTS["diiNetFlowCr"]
+    fii_history = []
+    if truedata_rest.available():
+        today_flow = truedata_rest.get_fii_dii_today()
+        if today_flow:
+            fii_net = today_flow.get("fiiNetFlowCr", fii_net)
+            dii_net = today_flow.get("diiNetFlowCr", dii_net)
+        fii_history = truedata_rest.get_fii_dii_history(12)
+
     return {
         "indiaVix":       round(vix, 2),
         "inrUsd":         inr_usd,
@@ -65,15 +77,16 @@ def _fetch_macro() -> dict:
         "goldPriceUsd":   gold_usd,
         "repoRate":       _DEFAULTS["repoRate"],
         "nextRbiDate":    _DEFAULTS["nextRbiDate"],
-        "fiiNetFlowCr":   _DEFAULTS["fiiNetFlowCr"],
-        "diiNetFlowCr":   _DEFAULTS["diiNetFlowCr"],
+        "fiiNetFlowCr":   fii_net,
+        "diiNetFlowCr":   dii_net,
+        "fiiHistory":     fii_history,
         "fearGreedIndex": fg_value,
         "fearGreedLabel": fg_label,
         "description": (
             f"India VIX at {vix:.1f} — {fg_label.lower()} territory. "
             f"INR/USD at {usd_inr:.2f}. Brent crude at ${crude:.1f}/bbl."
         ),
-        "dataSource": "twelvedata" if td.available() else "defaults",
+        "dataSource": "truedata" if truedata_rest.available() else ("twelvedata" if td.available() else "defaults"),
     }
 
 

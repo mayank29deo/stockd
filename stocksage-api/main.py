@@ -288,6 +288,7 @@ async def health():
     from services import nubra_service as nubra
     from services import kotak_neo_service as kotak
     from services import truedata_service as truedata
+    from services import truedata_rest_service as truedata_rest
     from routers.ws import ws_status
     ws_info = await ws_status()
     return {
@@ -296,5 +297,6 @@ async def health():
         **nubra.health(),
         **kotak.health(),
         **truedata.health(),
+        **truedata_rest.health(),
         "ws_hub":          ws_info,
     }
