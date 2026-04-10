@@ -65,8 +65,8 @@ def _get_token() -> "str | None":
     with _lock:
         now = time.time()
 
-        # Reset auth_failed after 5 min so transient errors self-heal
-        if _auth_failed and (now - _auth_failed_at) > 300:
+        # Reset auth_failed after 30 min (trial creds may be invalid — avoid log spam)
+        if _auth_failed and (now - _auth_failed_at) > 1800:
             _auth_failed = False
 
         if _auth_failed:
