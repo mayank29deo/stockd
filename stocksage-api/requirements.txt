@@ -9,5 +9,7 @@ pytz==2024.1
 apscheduler==3.10.4
 pyotp==2.9.0
 websockets==13.1
+truedata-ws>=0.4.0
 # Kotak Neo uses direct REST calls — no SDK needed (SDK pins numpy==1.24.2, breaks Python 3.13)
 # DO NOT install websocket-client — it conflicts with websockets==13.1 and breaks uvicorn WS
+# truedata-ws uses its own websocket-client internally; test for conflicts on Railway

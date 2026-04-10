@@ -5,6 +5,7 @@ import services.eodhd_service as eodhd
 import services.rapidapi_yf_service as ryf
 import services.yahoo_service as yf_svc
 import services.nubra_service as nubra
+import services.truedata_service as truedata
 from services.technical_service import compute_technicals
 from services.verdict_service import build_verdict
 from services.news_service import get_stock_news
@@ -28,7 +29,14 @@ router = APIRouter(prefix="/api/stock", tags=["stock-detail"])
 # never go empty.
 
 def _get_history(symbol: str, period: str = "1y") -> list:
-    # 0. Nubra — free, real-time, 10 years daily OHLCV, no quota concern
+    # 0. TrueData — free trial, 15 days bar data + 3 years EOD
+    if truedata.available():
+        h = truedata.get_history(symbol, period)
+        if h:
+            snap.save_history_snapshot(symbol, period, h)
+            return h
+
+    # 1. Nubra — free, real-time, 10 years daily OHLCV, no quota concern
     if nubra.available():
         h = nubra.get_history(symbol, period)
         if h:

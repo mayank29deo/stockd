@@ -150,7 +150,17 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         print(f"[KotakNeo] Startup restore error: {e}")
 
-    # 2b. Nubra auth warm-up (non-blocking — logs result, doesn't block startup)
+    # 2b. TrueData WebSocket — connect in background, subscribe to NIFTY50 + indices
+    try:
+        import services.truedata_service as truedata
+        from config import NIFTY50_SYMBOLS, INDICES as IDX_MAP
+        td_symbols = list(NIFTY50_SYMBOLS) + list(IDX_MAP.keys())
+        truedata.connect(td_symbols)
+        print(f"[TrueData] Configured: {truedata._CONFIGURED} — connecting to {len(td_symbols)} symbols")
+    except Exception as e:
+        print(f"[TrueData] Startup error: {e}")
+
+    # 2c. Nubra auth warm-up (non-blocking — logs result, doesn't block startup)
     try:
         import services.nubra_service as nubra
         print(f"[Nubra] SESSION_TOKEN set: {bool(nubra.NUBRA_SESSION_TOKEN)} | TOTP configured: {nubra._TOTP_CONFIGURED}")
@@ -277,6 +287,7 @@ async def health():
     from services.snapshot_service import get_last_snapshot_date
     from services import nubra_service as nubra
     from services import kotak_neo_service as kotak
+    from services import truedata_service as truedata
     from routers.ws import ws_status
     ws_info = await ws_status()
     return {
@@ -284,5 +295,6 @@ async def health():
         "lastSnapshotDate": get_last_snapshot_date(),
         **nubra.health(),
         **kotak.health(),
+        **truedata.health(),
         "ws_hub":          ws_info,
     }

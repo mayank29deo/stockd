@@ -4,6 +4,7 @@ from services.nse_service import get_nifty50_quotes, get_stock_quote as nse_get_
 from services import snapshot_service as snap
 import services.rapidapi_yf_service as ryf
 import services.nubra_service as nubra
+import services.truedata_service as truedata
 from config import NIFTY50_SYMBOLS, SECTOR_MAP
 
 router = APIRouter(prefix="/api", tags=["quotes"])
@@ -21,7 +22,13 @@ def _live_quote(symbol: str) -> "dict | None":
     Chain: Nubra → NSE batch (NIFTY50) → NSE quote-equity → RapidAPI YF → yfinance
     Nubra is tried first — sub-second REST, paise→INR normalised internally.
     """
-    # 0. Nubra — fastest, real-time, free during pilot
+    # 0. TrueData — sub-millisecond in-memory tick cache (WebSocket streaming)
+    if truedata.available():
+        q = truedata.get_quote(symbol)
+        if q and q.get("price", 0) > 0:
+            return {**q, "dataType": "live"}
+
+    # 1. Nubra — real-time REST, free during pilot
     if nubra.available():
         q = nubra.get_quote(symbol)
         if q and q.get("price", 0) > 0:
@@ -187,8 +194,14 @@ async def all_stocks(
     raw_quotes: list = []
 
     if market_is_open:
-        # 0. Nubra bulk (parallel REST, fastest)
-        if nubra.available():
+        # 0. TrueData — in-memory WebSocket tick cache, fastest possible
+        if truedata.available():
+            td_quotes = truedata.get_nifty50_quotes()
+            if td_quotes:
+                raw_quotes = [td_quotes[s] for s in NIFTY50_SYMBOLS[:limit] if s in td_quotes]
+
+        # 0b. Nubra bulk — parallel REST
+        if not raw_quotes and nubra.available():
             nubra_quotes = nubra.get_nifty50_quotes()
             if nubra_quotes:
                 raw_quotes = [nubra_quotes[s] for s in NIFTY50_SYMBOLS[:limit] if s in nubra_quotes]
