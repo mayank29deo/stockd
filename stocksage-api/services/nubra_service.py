@@ -65,6 +65,7 @@ _token_expiry:  float      = 0.0   # unix timestamp when token expires
 _TOKEN_TTL_SEC             = 10 * 3600  # Nubra tokens last ~12h; refresh at 10h
 _auth_failed               = False      # flag to stop retry storms
 _auth_failed_at: float     = 0.0        # when auth last failed — retry after 5 min
+_env_token_rejected        = False      # True when server returned 401 on env session token
 
 # Request-level cache for quotes (60s TTL)
 _quote_cache = TTLCache(maxsize=300, ttl=60)
@@ -160,14 +161,16 @@ def _ensure_token() -> "str | None":
         if _session_token and now < _token_expiry:
             return _session_token
 
-        # 2. Manual session token from env — decode JWT exp to check real expiry
-        if NUBRA_SESSION_TOKEN:
+        # 2. Manual session token from env — only use if server hasn't rejected it
+        #    _env_token_rejected is set True when the server returns 401, meaning
+        #    Nubra revoked the session server-side (happens ~24h regardless of JWT exp).
+        if NUBRA_SESSION_TOKEN and not _env_token_rejected:
             exp = _jwt_exp(NUBRA_SESSION_TOKEN)
             if exp and now >= exp:
                 log.warning(
-                    f"[Nubra] NUBRA_SESSION_TOKEN expired at "
+                    f"[Nubra] NUBRA_SESSION_TOKEN JWT expired at "
                     f"{datetime.fromtimestamp(exp, tz=timezone.utc).isoformat()} — "
-                    "attempting TOTP auto-refresh"
+                    "falling through to TOTP"
                 )
                 # Fall through to TOTP
             else:
@@ -274,6 +277,51 @@ def _auth_headers() -> dict:
     }
 
 
+def _force_reauth():
+    """
+    Called when the server returns 401. Clears the cached token so the
+    next _ensure_token() call bypasses the env session token and uses TOTP.
+    This is the self-heal path: Nubra revokes sessions server-side ~24h after
+    issue, but the JWT exp claim may be months away — we can't trust JWT exp alone.
+    """
+    global _session_token, _token_expiry, _env_token_rejected, _auth_failed
+    with _lock:
+        if _session_token and _session_token == NUBRA_SESSION_TOKEN:
+            # The env token was rejected by the server — skip it from now on
+            _env_token_rejected = True
+            log.warning("[Nubra] ⚠️  Session token rejected by server (401) — "
+                        "marking env token invalid, switching to TOTP auto-refresh")
+        _session_token = None
+        _token_expiry  = 0.0
+        _auth_failed   = False  # allow TOTP to try immediately
+
+
+def _req(method: str, url: str, **kwargs) -> "requests.Response | None":
+    """
+    Authenticated request with automatic 401 → TOTP reauth → single retry.
+    Returns the Response or None on total failure.
+    """
+    try:
+        hdrs = _auth_headers()
+    except RuntimeError:
+        return None
+
+    try:
+        r = _http.request(method, url, headers=hdrs, **kwargs)
+        if r.status_code == 401:
+            log.info(f"[Nubra] 401 on {url} — forcing reauth via TOTP")
+            _force_reauth()
+            try:
+                hdrs2 = _auth_headers()
+            except RuntimeError:
+                return None
+            r = _http.request(method, url, headers=hdrs2, **kwargs)
+        return r
+    except Exception as e:
+        log.debug(f"[Nubra] request {method} {url} failed: {e}")
+        return None
+
+
 # ── Current Price (snapshot) ──────────────────────────────────────────────────
 
 def get_quote(symbol: str) -> "dict | None":
@@ -302,12 +350,9 @@ def get_quote(symbol: str) -> "dict | None":
 def _get_quote_optionchain(sym: str) -> "dict | None":
     """Fast quote via /optionchains/{sym}/price — F&O stocks only."""
     try:
-        hdrs = _auth_headers()
-        r    = _http.get(
-            f"{_BASE_URL}/optionchains/{sym}/price",
-            headers=hdrs,
-            timeout=8,
-        )
+        r = _req("GET", f"{_BASE_URL}/optionchains/{sym}/price", timeout=8)
+        if r is None:
+            return None
         if r.status_code == 400:
             return None   # symbol not in F&O universe — fall through to timeseries
         r.raise_for_status()
@@ -366,13 +411,9 @@ def _get_quote_timeseries(sym: str) -> "dict | None":
     }
 
     try:
-        hdrs = _auth_headers()
-        r    = _http.post(
-            f"{_BASE_URL}/charts/timeseries",
-            json=payload,
-            headers=hdrs,
-            timeout=12,
-        )
+        r = _req("POST", f"{_BASE_URL}/charts/timeseries", json=payload, timeout=12)
+        if r is None:
+            return None
         r.raise_for_status()
         candles = _parse_history_response(r.json(), sym)
         if not candles:
@@ -457,13 +498,9 @@ def get_nifty50_quotes() -> dict:
     }
 
     try:
-        hdrs = _auth_headers()
-        r = _http.post(
-            f"{_BASE_URL}/charts/timeseries",
-            json=payload,
-            headers=hdrs,
-            timeout=20,
-        )
+        r = _req("POST", f"{_BASE_URL}/charts/timeseries", json=payload, timeout=20)
+        if r is None:
+            raise ValueError("no response")
         r.raise_for_status()
         data    = r.json()
         results = data.get("result", [])
@@ -547,12 +584,9 @@ def get_index_quote(index_id: str) -> "dict | None":
             return _quote_cache[cache_key]
 
     try:
-        hdrs = _auth_headers()
-        r    = _http.get(
-            f"{_BASE_URL}/optionchains/{nubra_sym}/price",
-            headers=hdrs,
-            timeout=8,
-        )
+        r = _req("GET", f"{_BASE_URL}/optionchains/{nubra_sym}/price", timeout=8)
+        if r is None:
+            return None
         r.raise_for_status()
         d = r.json()
 
@@ -622,13 +656,9 @@ def get_history(symbol: str, period: str = "1y") -> list:
     }
 
     try:
-        hdrs = _auth_headers()
-        r    = _http.post(
-            f"{_BASE_URL}/charts/timeseries",
-            json=payload,
-            headers=hdrs,
-            timeout=20,
-        )
+        r = _req("POST", f"{_BASE_URL}/charts/timeseries", json=payload, timeout=20)
+        if r is None:
+            return []
         r.raise_for_status()
         return _parse_history_response(r.json(), sym)
 
@@ -668,13 +698,9 @@ def get_index_history(index_id: str, period: str = "3m") -> list:
     }
 
     try:
-        hdrs = _auth_headers()
-        r    = _http.post(
-            f"{_BASE_URL}/charts/timeseries",
-            json=payload,
-            headers=hdrs,
-            timeout=20,
-        )
+        r = _req("POST", f"{_BASE_URL}/charts/timeseries", json=payload, timeout=20)
+        if r is None:
+            return []
         r.raise_for_status()
         return _parse_history_response(r.json(), nubra_sym)
 
